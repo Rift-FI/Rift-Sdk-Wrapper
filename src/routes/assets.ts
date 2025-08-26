@@ -18,11 +18,13 @@ router.use(riftSdkMiddleware);
 // Public routes
 router.get("/tokens", getAllTokens);
 router.get("/tokens/chain/:chainId", getTokensByChainId);
-router.get("/tokens/:tokenId", getTokenById);
 router.get("/chains/:chainId", getChainById);
 
-// Authenticated routes
+// Authenticated routes (must come before parameterized routes)
 router.get("/tokens/user", authMiddleware, getUserTokens);
+
+// Parameterized routes (must come last to avoid conflicts)
+router.get("/tokens/:tokenId", getTokenById);
 
 // Route with conditional authentication
 router.get(

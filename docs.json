@@ -7,8 +7,8 @@
   },
   "servers": [
     {
-      "url": "http://localhost:3000/api/v1",
-      "description": "Development Server"
+      "url": "https://api.riftfi.xyz/api/v1",
+      "description": "Production Server"
     }
   ],
   "tags": [
@@ -1296,7 +1296,7 @@
         }
       }
     },
-    "/offramp/offramp": {
+    "/offramp": {
       "post": {
         "tags": ["Off-ramp"],
         "summary": "Create an off-ramp order",
@@ -1368,7 +1368,7 @@
         }
       }
     },
-    "/onramp/onramp": {
+    "/onramp": {
       "post": {
         "tags": ["On-ramp"],
         "summary": "Initiate a buy order",
@@ -1392,7 +1392,7 @@
         }
       }
     },
-    "/onramp/onramp/status": {
+    "/onramp/status": {
       "post": {
         "tags": ["On-ramp"],
         "summary": "Get status of an on-ramp transaction",
@@ -1421,7 +1421,7 @@
         }
       }
     },
-    "/onramp/onramp/orders/{userId}": {
+    "/onramp/orders/{userId}": {
       "get": {
         "tags": ["On-ramp"],
         "summary": "Get all on-ramp orders for a user",

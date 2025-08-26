@@ -22,7 +22,7 @@ router.post("/preview_exchange_rate", previewExchangeRate);
 router.get("/payment_methods/:currency", getSupportedInstitutions);
 router.post("/send-payment-link", sendPaymentLink);
 router.post("/pay", pay);
-router.post("/offramp", createOrder);
+router.post("/", createOrder);
 router.post("/get-withdrawal-fee", getWithdrawalFee);
 router.get("/poll_order_status", pollOrderStatus);
 router.get("/get_orders", getOrders);

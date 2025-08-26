@@ -13,8 +13,8 @@ const router = Router();
 router.use(riftSdkMiddleware);
 router.use(authMiddleware);
 
-router.post("/onramp", buy);
-router.post("/onramp/status", getOnrampStatus);
-router.get("/onramp/orders/:userId", getOnrampOrders);
+router.post("/", buy);
+router.post("/status", getOnrampStatus);
+router.get("/orders/:userId", getOnrampOrders);
 
 export default router;

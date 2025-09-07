@@ -20,4 +20,4 @@ RUN npm run build
 EXPOSE 9000
 
 # Run the app
-CMD ["node", "dist/src/index.js"]
+CMD ["node", "dist/index.js"]

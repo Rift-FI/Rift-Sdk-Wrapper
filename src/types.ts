@@ -1657,10 +1657,36 @@ export interface RecoveryData {
   export interface MerchantNotApprovedError {
     error: string;
     message: string;
-    merchantStatus: {
-      approved: false;
-      userId: string;
-      identifier: string | null;
-    };
-  }
+  merchantStatus: {
+    approved: false;
+    userId: string;
+    identifier: string | null;
+  };
+}
+
+// Deposits Types
+export interface Deposit {
+  id: string;
+  userId: string;
+  transactionHash: string;
+  blockNumber: string;
+  blockTimestamp: string;
+  fromAddress: string;
+  toAddress: string;
+  amount: string;
+  rawAmount: string;
+  exchangeRate: number;
+  kesAmount: number;
+  processed: boolean;
+  createdAt: string;
+  updatedAt: string;
+  user: {
+    email: string;
+    phoneNumber: string;
+  };
+}
+
+export interface GetAllDepositsResponse {
+  deposits: Deposit[];
+}
   

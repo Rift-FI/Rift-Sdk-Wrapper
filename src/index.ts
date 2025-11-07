@@ -9,6 +9,8 @@ import transactionRouter from "./routes/transaction";
 import notificationRouter from "./routes/notification";
 import signerRouter from "./routes/signer";
 import assetsRouter from "./routes/assets";
+import paymentLinksRouter from "./routes/payment-links";
+import depositsRouter from "./routes/deposits";
 import swaggerUi from "swagger-ui-express";
 import * as swaggerDocument from "../docs.json";
 
@@ -32,6 +34,8 @@ app.use("/api/v1/transaction", transactionRouter);
 app.use("/api/v1/notifications", notificationRouter);
 app.use("/api/v1/signer", signerRouter);
 app.use("/api/v1/assets", assetsRouter);
+app.use("/api/v1/payment-links", paymentLinksRouter);
+app.use("/api/v1/deposits", depositsRouter);
 
 // Swagger UI Endpoint
 app.use(

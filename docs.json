@@ -1,9 +1,9 @@
 {
   "openapi": "3.0.0",
   "info": {
-    "title": "Rift SDK API Wrapper",
+    "title": "Rift Finance API",
     "version": "1.0.0",
-    "description": "An Express.js API wrapper for the Rift SDK, providing a RESTful interface to its services."
+    "description": "## About Rift Finance\n\nRift Finance is a comprehensive Web3 infrastructure platform providing blockchain wallet operations and payment infrastructure across multiple chains.\n\n### Key Features\n\n- **Multi-chain Wallet Services**: Non-custodial wallet operations across 10+ blockchains including Ethereum, Polygon, Base, Arbitrum, and more\n- **Payment Infrastructure**: Create and manage payment links, invoices, and merchant services\n- **Fiat On/Off-Ramps**: Seamless conversion between crypto and fiat currencies with support for African markets (Nigeria NGN, Kenya KES)\n- **Secure Authentication**: Multiple authentication methods including email, phone, and external ID with OTP verification\n- **Transaction Management**: Send transactions, track history, and calculate fees across supported chains\n- **Notification System**: Push notification subscriptions for transaction updates\n- **Proxy Wallet & Signing**: Sign transactions and messages without exposing private keys\n- **Deposit Tracking**: Monitor and manage crypto deposits\n\n### Authentication\n\nThis API uses two-tier authentication:\n1. **API Key** (X-API-Key header): Required for all endpoints - identifies your project\n2. **Bearer Token** (Authorization header): Required for user-specific operations - identifies the authenticated user\n\n### Supported Chains\n\nEthereum, Polygon, Base, Arbitrum, Optimism, BNB Smart Chain, Avalanche, Lisk, Berachain\n\n### Supported Tokens\n\nUSDC, USDT, ETH, BTC, MATIC, BNB, WBERA, LSK, and more\n\n### Base URL\n\n`https://api.riftfi.xyz/api/v1`"
   },
   "servers": [
     {
@@ -41,6 +41,14 @@
     {
       "name": "Assets",
       "description": "Fetching information about supported chains and tokens"
+    },
+    {
+      "name": "Payment Links",
+      "description": "Create and manage payment requests and send links for crypto transfers"
+    },
+    {
+      "name": "Deposits",
+      "description": "Track and manage crypto deposits"
     }
   ],
   "components": {
@@ -1829,6 +1837,329 @@
         ],
         "responses": {
           "200": { "description": "List of supported chains" }
+        }
+      }
+    },
+    "/payment-links/request-payment": {
+      "post": {
+        "tags": ["Payment Links"],
+        "summary": "Create a payment request",
+        "description": "Generate a payment request that others can pay. Returns a unique nonce for tracking.",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["amount", "chain", "token"],
+                "properties": {
+                  "amount": { "type": "number", "description": "Amount to request" },
+                  "chain": { "type": "string", "enum": ["ARBITRUM", "BASE", "OPTIMISM", "ETHEREUM", "LISK", "BNB", "BERACHAIN", "POLYGON", "AVAX", "BSC"] },
+                  "token": { "type": "string", "enum": ["USDC", "USDT", "DYU", "ETH", "BTC", "WBERA", "USDC.e", "LSK", "BNB", "MATIC", "SAIL"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Payment request created successfully" },
+          "400": { "description": "Invalid request" }
+        }
+      }
+    },
+    "/payment-links/execute": {
+      "post": {
+        "tags": ["Payment Links"],
+        "summary": "Execute a payment request",
+        "description": "Pay a payment request using its nonce",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "nonce",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Payment request nonce"
+          }
+        ],
+        "responses": {
+          "200": { "description": "Payment executed successfully" },
+          "400": { "description": "Invalid nonce or payment failed" }
+        }
+      }
+    },
+    "/payment-links/send-specific": {
+      "post": {
+        "tags": ["Payment Links"],
+        "summary": "Create a send link for a specific recipient",
+        "description": "Create a payment link that can only be claimed by a specific recipient (identified by username, email, or phone)",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["time", "value", "token", "chain"],
+                "properties": {
+                  "time": { "type": "string", "description": "Expiration time (e.g., '1h', '30m', '2d')", "example": "24h" },
+                  "value": { "type": "string", "description": "Amount to send" },
+                  "token": { "type": "string" },
+                  "chain": { "type": "string" },
+                  "recipientUsername": { "type": "string" },
+                  "recipientPhoneNumber": { "type": "string" },
+                  "recipientEmail": { "type": "string" },
+                  "externalId": { "type": "string" },
+                  "password": { "type": "string" },
+                  "phoneNumber": { "type": "string" },
+                  "otpCode": { "type": "string" },
+                  "email": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Send link created successfully" },
+          "400": { "description": "Invalid request" }
+        }
+      }
+    },
+    "/payment-links/send-open": {
+      "post": {
+        "tags": ["Payment Links"],
+        "summary": "Create an open send link",
+        "description": "Create a payment link that anyone can claim (first come, first served)",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["time", "value", "token", "chain"],
+                "properties": {
+                  "time": { "type": "string", "description": "Expiration time", "example": "24h" },
+                  "value": { "type": "string" },
+                  "token": { "type": "string" },
+                  "chain": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Open send link created" },
+          "400": { "description": "Invalid request" }
+        }
+      }
+    },
+    "/payment-links/claim-specific": {
+      "post": {
+        "tags": ["Payment Links"],
+        "summary": "Claim a specific send link",
+        "description": "Claim a send link that was created for you specifically",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["id"],
+                "properties": {
+                  "id": { "type": "string", "description": "Send link ID" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Successfully claimed" },
+          "400": { "description": "Unable to claim" }
+        }
+      }
+    },
+    "/payment-links/claim-open": {
+      "post": {
+        "tags": ["Payment Links"],
+        "summary": "Claim an open send link",
+        "description": "Claim an open send link (first come, first served)",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["id"],
+                "properties": {
+                  "id": { "type": "string", "description": "Send link ID" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Successfully claimed" },
+          "400": { "description": "Unable to claim or already claimed" }
+        }
+      }
+    },
+    "/payment-links/list-payment-requests": {
+      "get": {
+        "tags": ["Payment Links"],
+        "summary": "List all payment requests",
+        "description": "Get all payment requests created by the authenticated user with optional filtering",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "expired",
+            "in": "query",
+            "schema": { "type": "string", "enum": ["true", "false"] },
+            "description": "Filter by expiration status"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "string" },
+            "description": "Number of results per page"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": { "type": "string" },
+            "description": "Page number"
+          }
+        ],
+        "responses": {
+          "200": { "description": "List of payment requests" }
+        }
+      }
+    },
+    "/payment-links/list-send-links": {
+      "get": {
+        "tags": ["Payment Links"],
+        "summary": "List all send links",
+        "description": "Get all send links created by the authenticated user",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "fulfilled",
+            "in": "query",
+            "schema": { "type": "string", "enum": ["true", "false"] },
+            "description": "Filter by fulfillment status"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "List of send links" }
+        }
+      }
+    },
+    "/payment-links/cancel-payment-request/{nonce}": {
+      "delete": {
+        "tags": ["Payment Links"],
+        "summary": "Cancel a payment request",
+        "description": "Cancel an unpaid payment request",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "nonce",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Payment request cancelled" },
+          "400": { "description": "Cannot cancel" }
+        }
+      }
+    },
+    "/payment-links/cancel-send-link/{urlId}": {
+      "delete": {
+        "tags": ["Payment Links"],
+        "summary": "Cancel a send link",
+        "description": "Cancel an unclaimed send link",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "urlId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Send link cancelled" },
+          "400": { "description": "Cannot cancel" }
+        }
+      }
+    },
+    "/payment-links/user/all": {
+      "get": {
+        "tags": ["Payment Links"],
+        "summary": "Get all users",
+        "description": "Get a list of all users in the system (admin function)",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "responses": {
+          "200": { "description": "List of all users" }
+        }
+      }
+    },
+    "/deposits": {
+      "get": {
+        "tags": ["Deposits"],
+        "summary": "Get all deposits",
+        "description": "Retrieve all Base USDC deposits for the authenticated user",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "List of deposits",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deposits": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": { "type": "string" },
+                          "userId": { "type": "string" },
+                          "transactionHash": { "type": "string" },
+                          "blockNumber": { "type": "string" },
+                          "blockTimestamp": { "type": "string" },
+                          "fromAddress": { "type": "string" },
+                          "toAddress": { "type": "string" },
+                          "amount": { "type": "string" },
+                          "rawAmount": { "type": "string" },
+                          "exchangeRate": { "type": "number" },
+                          "kesAmount": { "type": "number" },
+                          "processed": { "type": "boolean" },
+                          "createdAt": { "type": "string" },
+                          "updatedAt": { "type": "string" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Error fetching deposits" }
         }
       }
     }

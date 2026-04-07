@@ -73,9 +73,9 @@ https://api.riftfi.xyz/api-docs
 - Track withdrawal status and fees
 
 ### 📥 On-ramp (Fiat → Crypto)
-- Initiate crypto purchases with mobile money
-- Track on-ramp transaction status
-- View purchase order history
+- Initiate crypto purchases via buy requests
+- Track on-ramp transaction status by transaction code
+- View all on-ramp orders for a given user
 
 ### 🔔 Notification Services
 - Register for push notifications
@@ -93,6 +93,54 @@ https://api.riftfi.xyz/api-docs
 - Get supported blockchain networks
 - View available tokens by chain
 - Access token and chain metadata
+
+### 🌉 Bridge
+- Fetch available cross-chain bridge routes
+- Get quotes for bridge transactions
+- Execute cross-chain token transfers
+
+### 🪪 KYC (Know Your Customer)
+- Check user existence and verification status
+- OTP-based identity verification flow
+- Issue KYC tokens and track verification job status
+
+### 🎁 Loyalty
+- View user stats, point history, and leaderboard standings
+- Redeem loyalty points and view redemption history
+- Retrieve program metrics, config, and point value
+
+### 📁 Project Management
+- Full CRUD for projects (create, list, fetch, delete)
+- Regenerate API keys and manage allowed origins
+- Update payment widget config and view per-project stats
+
+### 💸 Referral Fees
+- Track referrer earned fee balances and fee entries
+- Claim accumulated referral fees and view past claims
+- Retrieve list of referred users with filtering
+
+### 📊 Stats
+- View platform-wide total transaction volume
+- Retrieve total user count
+- Access total value locked (TVL)
+
+### 🔗 Wallet Connect
+- Pair new WalletConnect sessions via URI
+- List active sessions and disconnect by topic
+- Approve or reject pending signing requests
+
+### 🏊 Weekly Pool
+- Retrieve the current active weekly reward pool
+- View historical pool records
+- Access referral-specific pool information
+
+### 💳 Deposits
+- Retrieve all deposits for the authenticated user
+
+### 🔗 Payment Links
+- Create, pay, list, and cancel payment requests
+- Create and manage send links (specific and open)
+- Register redirect URLs and retrieve all accessible users
 
 ## 🌐 Supported Blockchains
 

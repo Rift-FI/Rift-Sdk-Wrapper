@@ -1242,6 +1242,8 @@ export interface RecoveryData {
     amount: number;
     recipientEmail?: string;
     recipientPhone?: string;
+    originUrl?: string;
+    [key: string]: string | number | undefined;
   }
   
   export interface CreateInvoiceResponse {
@@ -1688,5 +1690,117 @@ export interface Deposit {
 
 export interface GetAllDepositsResponse {
   deposits: Deposit[];
+}
+
+// ============================================
+// KYC Types
+// ============================================
+
+export interface KYCTokenRequest {
+  country_code: string;
+  identifier: string;
+}
+
+export interface KYCStatusRequest {
+  email?: string;
+  phoneNumber?: string;
+  externalId?: string;
+}
+
+export interface KYCVerifyRequest {
+  jobId: string;
+}
+
+export interface KYCVerifyAndSendOtpRequest {
+  identifier: string;
+  maxWaitTime?: number;
+}
+
+// ============================================
+// Loyalty Types
+// ============================================
+
+export interface LoyaltyRedeemRequest {
+  points: number;
+  redemptionType?: string;
+}
+
+// ============================================
+// Bridge Types
+// ============================================
+
+export interface BridgeQuoteRequest {
+  sourceChain: string;
+  destinationChain: string;
+  token: string;
+  amount: string;
+}
+
+export interface BridgeExecuteRequest {
+  sourceChain: string;
+  destinationChain: string;
+  token: string;
+  amount: string;
+  recipient?: string;
+}
+
+// ============================================
+// WalletConnect Types
+// ============================================
+
+export interface WalletConnectPairRequest {
+  uri: string;
+  chain: string;
+}
+
+// ============================================
+// Project Types
+// ============================================
+
+export interface CreateProjectRequest {
+  name: string;
+  email?: string;
+  phoneNumber?: string;
+  known_origins?: string;
+  payment_link_widget?: string;
+}
+
+export interface GetMyProjectsRequest {
+  email?: string;
+  phoneNumber?: string;
+}
+
+export interface AddOriginRequest {
+  origin: string;
+  phoneNumber?: string;
+  email?: string;
+}
+
+export interface UpdatePaymentWidgetRequest {
+  id: string;
+  payment_link_widget: string;
+}
+
+// ============================================
+// User Management Types
+// ============================================
+
+export interface SuspendUserRequest {
+  phoneNumber?: string;
+  email?: string;
+  externalId?: string;
+  userId?: string;
+  reason?: string;
+  projectOwnerPhone?: string;
+  projectOwnerEmail?: string;
+}
+
+export interface UnsuspendUserRequest {
+  phoneNumber?: string;
+  email?: string;
+  externalId?: string;
+  userId?: string;
+  projectOwnerPhone?: string;
+  projectOwnerEmail?: string;
 }
   

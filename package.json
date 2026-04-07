@@ -13,7 +13,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "@rift-finance/wallet": "^1.4.13",
+    "@rift-finance/wallet": "^1.4.23",
     "dotenv": "^17.2.1",
     "express": "^5.1.0",
     "swagger-ui-express": "^5.0.1"

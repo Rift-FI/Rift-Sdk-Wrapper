@@ -9,17 +9,11 @@ import transactionRouter from "./routes/transaction";
 import notificationRouter from "./routes/notification";
 import signerRouter from "./routes/signer";
 import assetsRouter from "./routes/assets";
-import paymentLinksRouter from "./routes/payment-links";
 import depositsRouter from "./routes/deposits";
 import kycRouter from "./routes/kyc";
-import loyaltyRouter from "./routes/loyalty";
-import weeklyPoolRouter from "./routes/weekly-pool";
-import referralFeesRouter from "./routes/referral-fees";
 import bridgeRouter from "./routes/bridge";
 import walletConnectRouter from "./routes/wallet-connect";
-import projectRouter from "./routes/project";
 import userManagementRouter from "./routes/user-management";
-import statsRouter from "./routes/stats";
 import swaggerUi from "swagger-ui-express";
 import * as swaggerDocument from "../docs.json";
 
@@ -43,17 +37,11 @@ app.use("/api/v1/transaction", transactionRouter);
 app.use("/api/v1/notifications", notificationRouter);
 app.use("/api/v1/signer", signerRouter);
 app.use("/api/v1/assets", assetsRouter);
-app.use("/api/v1/payment-links", paymentLinksRouter);
 app.use("/api/v1/deposits", depositsRouter);
 app.use("/api/v1/kyc", kycRouter);
-app.use("/api/v1/loyalty", loyaltyRouter);
-app.use("/api/v1/weekly-pool", weeklyPoolRouter);
-app.use("/api/v1/referral-fees", referralFeesRouter);
 app.use("/api/v1/bridge", bridgeRouter);
 app.use("/api/v1/walletconnect", walletConnectRouter);
-app.use("/api/v1/project", projectRouter);
 app.use("/api/v1/users", userManagementRouter);
-app.use("/api/v1/stats", statsRouter);
 
 // Swagger UI Endpoint
 app.use(

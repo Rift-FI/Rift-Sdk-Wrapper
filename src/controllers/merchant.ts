@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { sanitizeError } from "../utils/error";
 import {
   CreateInvoiceRequest,
   GetInvoicesRequest,
@@ -13,7 +14,7 @@ export const createInvoice = async (
     const response = await req.rift!.merchant.createInvoice(req.body);
     res.status(201).json(response);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
 };
 
@@ -25,7 +26,7 @@ export const getInvoices = async (
     const response = await req.rift!.merchant.getInvoices(req.query);
     res.status(200).json(response);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
 };
 
@@ -37,6 +38,6 @@ export const getMerchantStatus = async (
     const response = await req.rift!.merchant.getMerchantStatus(req.query);
     res.status(200).json(response);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
 };

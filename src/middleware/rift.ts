@@ -25,8 +25,9 @@ export const riftSdkMiddleware = (
 
   try {
     const rift = new Rift({
-      environment:Environment.PRODUCTION,
+      environment: Environment.PRODUCTION,
       apiKey: apiKey,
+      timeout: 120_000, // 120s — onramp/offramp can take 30-90s due to mobile money STK push
     });
 
     // Attach the SDK instance to the request object

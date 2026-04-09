@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { sanitizeError } from "../utils/error";
 import {
   LoginRequest,
   SignupRequest,
@@ -25,7 +26,7 @@ export const signup = async (
     const response = await req.rift!.auth.signup(req.body);
     res.status(201).json(response);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
 };
 
@@ -37,7 +38,7 @@ export const login = async (
     const response = await req.rift!.auth.login(req.body);
     res.status(200).json(response);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
 };
 
@@ -49,7 +50,7 @@ export const updateUser = async (
     const response = await req.rift!.auth.updateUser(req.body);
     res.status(200).json(response);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
 };
 
@@ -61,7 +62,7 @@ export const sendOtp = async (
     const response = await req.rift!.auth.sendOtp(req.body);
     res.status(200).json(response);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
 };
 
@@ -73,7 +74,7 @@ export const verifyOtp = async (
     const response = await req.rift!.auth.verifyOtp(req.body);
     res.status(200).json(response);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
 };
 
@@ -94,7 +95,7 @@ export const deleteUser = async (
     const response = await req.rift!.auth.deleteUser(req.body);
     res.status(200).json(response);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
 };
 
@@ -111,7 +112,7 @@ export const createRecoveryMethods = async (
     const response = await req.rift!.auth.createRecoveryMethods(req.body);
     res.status(201).json(response);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
 };
 
@@ -121,7 +122,7 @@ export const getRecoveryOptions = async (req: Request, res: Response) => {
     const response = await req.rift!.auth.getRecoveryOptions(externalId);
     res.status(200).json(response);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
 };
 
@@ -133,7 +134,7 @@ export const requestPasswordReset = async (
     const response = await req.rift!.auth.requestPasswordReset(req.body);
     res.status(200).json(response);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
 };
 
@@ -145,7 +146,7 @@ export const resetPassword = async (
     const response = await req.rift!.auth.resetPassword(req.body);
     res.status(200).json(response);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
 };
 
@@ -157,7 +158,7 @@ export const updateRecoveryMethods = async (
     const response = await req.rift!.auth.updateRecoveryMethods(req.body);
     res.status(200).json(response);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
 };
 
@@ -169,7 +170,7 @@ export const addRecoveryMethod = async (
     const response = await req.rift!.auth.addRecoveryMethod(req.body);
     res.status(200).json(response);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
 };
 
@@ -181,7 +182,7 @@ export const removeRecoveryMethod = async (
     const response = await req.rift!.auth.removeRecoveryMethod(req.body);
     res.status(200).json(response);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
 };
 
@@ -193,7 +194,7 @@ export const updateRecoveryMethod = async (
     const response = await req.rift!.auth.updateRecoveryMethod(req.body);
     res.status(200).json(response);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
 };
 
@@ -205,7 +206,7 @@ export const getMyRecoveryMethods = async (
     const response = await req.rift!.auth.getMyRecoveryMethods(req.body);
     res.status(200).json(response);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
 };
 
@@ -217,6 +218,6 @@ export const deleteAllRecoveryMethods = async (
     const response = await req.rift!.auth.deleteAllRecoveryMethods(req.body);
     res.status(200).json(response);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
 };

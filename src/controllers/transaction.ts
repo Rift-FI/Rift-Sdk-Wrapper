@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { sanitizeError } from "../utils/error";
 import {
   TransactionRequest,
   TransactionHistoryRequest,
@@ -13,7 +14,7 @@ export const send = async (
     const response = await req.rift!.transactions.send(req.body);
     res.status(200).json(response);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
 };
 
@@ -25,7 +26,7 @@ export const getHistory = async (
     const response = await req.rift!.transactions.getHistory(req.query);
     res.status(200).json(response);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
 };
 
@@ -37,6 +38,6 @@ export const getFee = async (
     const response = await req.rift!.transactions.getFee(req.query);
     res.status(200).json(response);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
 };

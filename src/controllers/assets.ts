@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { sanitizeError } from "../utils/error";
 
 export const getSupportedChains = async (req: Request, res: Response) => {
   try {
@@ -6,7 +7,7 @@ export const getSupportedChains = async (req: Request, res: Response) => {
     const response = await req.rift!.assets.getSupportedChains(active);
     res.status(200).json(response);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
 };
 
@@ -15,7 +16,7 @@ export const getAllTokens = async (req: Request, res: Response) => {
     const response = await req.rift!.assets.getAllTokens();
     res.status(200).json(response);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
 };
 
@@ -24,7 +25,7 @@ export const getUserTokens = async (req: Request, res: Response) => {
     const response = await req.rift!.assets.getUserTokens();
     res.status(200).json(response);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
 };
 
@@ -37,7 +38,7 @@ export const getTokensByChainId = async (
     const response = await req.rift!.assets.getTokensByChainId(chainId);
     res.status(200).json(response);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
 };
 
@@ -50,7 +51,7 @@ export const getTokenById = async (
     const response = await req.rift!.assets.getTokenById(tokenId);
     res.status(200).json(response);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
 };
 
@@ -63,6 +64,6 @@ export const getChainById = async (
     const response = await req.rift!.assets.getChainById(chainId);
     res.status(200).json(response);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
 };

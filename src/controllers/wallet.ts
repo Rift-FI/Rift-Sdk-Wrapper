@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { sanitizeError } from "../utils/error";
 import { TokenBalanceRequest, ChainBalanceRequest } from "../types";
 
 export const getTokenBalance = async (
@@ -9,7 +10,7 @@ export const getTokenBalance = async (
     const response = await req.rift!.wallet.getTokenBalance(req.query);
     res.status(200).json(response);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
 };
 
@@ -21,6 +22,6 @@ export const getChainBalance = async (
     const response = await req.rift!.wallet.getChainBalance(req.query);
     res.status(200).json(response);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
 };

@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { sanitizeError } from "../utils/error";
 import {
   NotificationSubscriptionRequest,
   NotificationTestRequest,
@@ -15,7 +16,7 @@ export const registerSubscription = async (
     );
     res.status(200).json(response);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
 };
 
@@ -28,7 +29,7 @@ export const unsubscribe = async (
     const response = await req.rift!.notifications.unsubscribe(subscriberId);
     res.status(200).json(response);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
 };
 
@@ -37,7 +38,7 @@ export const getUserSubscriptions = async (req: Request, res: Response) => {
     const response = await req.rift!.notifications.getUserSubscriptions();
     res.status(200).json(response);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
 };
 
@@ -51,7 +52,7 @@ export const sendTestNotification = async (
     );
     res.status(200).json(response);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
 };
 
@@ -65,7 +66,7 @@ export const sendToAllUserSubscribers = async (
     );
     res.status(200).json(response);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
 };
 
@@ -74,6 +75,6 @@ export const deleteAllSubscriptions = async (req: Request, res: Response) => {
     const response = await req.rift!.notifications.deleteAllSubscriptions();
     res.status(200).json(response);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
 };

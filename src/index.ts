@@ -50,6 +50,12 @@ app.use(
   swaggerUi.setup(swaggerDocument as swaggerUi.JsonObject)
 );
 
-app.listen(port, () => {
+const server = app.listen(port, () => {
   console.log(`Server is running on http://localhost:${port}`);
 });
+
+// Long-running endpoints (onramp/offramp) can take 30-90s due to mobile money STK push.
+// Set server timeout to 130s (10s buffer over the SDK's 120s timeout).
+server.setTimeout(130_000);
+server.keepAliveTimeout = 130_000;
+server.headersTimeout = 135_000;

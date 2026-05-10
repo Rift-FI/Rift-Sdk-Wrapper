@@ -6,7 +6,7 @@
     "description": "HTTP wrapper around the Rift Finance Wallet SDK (`@rift-finance/wallet`). Mirrors the SDK's services as REST endpoints so consumers can use Rift from any language. Every endpoint requires an `X-API-Key` header (the project's `sk_...` key). Most user-facing endpoints additionally require an `Authorization: Bearer <accessToken>` header, where `accessToken` is obtained from `/api/v1/auth/login`, `/api/v1/auth/google`, or `/api/v1/auth/apple`.\n\n**Timeout & retry policy**: the wrapper holds requests to upstream for up to 120s (mobile-money STK push can take 30-90s). Internal retries are disabled — if a request 5xxs, the caller should decide whether retrying is safe (most operations are non-idempotent; retrying signup/transactions can produce duplicates).\n\n**Error envelope**: failures return `{ \"error\": \"<message>\" }` with an appropriate HTTP status. HTML responses from upstream (e.g. Cloudflare 502 pages) are sanitised before being returned."
   },
   "servers": [
-    { "url": "https://rift-sdk-wrapper-j9qe.onrender.com", "description": "Production" },
+    { "url": "https://developers.riftfi.xyz", "description": "Production" },
     { "url": "http://localhost:3000", "description": "Local development" }
   ],
   "tags": [

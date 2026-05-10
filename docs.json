@@ -1,55 +1,34 @@
 {
-  "openapi": "3.0.0",
+  "openapi": "3.0.3",
   "info": {
-    "title": "Rift Finance API",
+    "title": "Rift SDK Wrapper API",
     "version": "1.0.0",
-    "description": "## About Rift Finance\n\nRift Finance is a comprehensive Web3 infrastructure platform providing blockchain wallet operations and payment infrastructure across multiple chains.\n\n### Key Features\n\n- **Multi-chain Wallet Services**: Non-custodial wallet operations across 10+ blockchains including Ethereum, Polygon, Base, Arbitrum, and more\n- **Payment Infrastructure**: Create and manage payment links, invoices, and merchant services\n- **Fiat On/Off-Ramps**: Seamless conversion between crypto and fiat currencies with support for African markets (Nigeria NGN, Kenya KES)\n- **Secure Authentication**: Multiple authentication methods including email, phone, and external ID with OTP verification\n- **Transaction Management**: Send transactions, track history, and calculate fees across supported chains\n- **Notification System**: Push notification subscriptions for transaction updates\n- **Proxy Wallet & Signing**: Sign transactions and messages without exposing private keys\n- **Deposit Tracking**: Monitor and manage crypto deposits\n\n### Authentication\n\nThis API uses two-tier authentication:\n1. **API Key** (X-API-Key header): Required for all endpoints - identifies your project\n2. **Bearer Token** (Authorization header): Required for user-specific operations - identifies the authenticated user\n\n### Supported Chains\n\nEthereum, Polygon, Base, Arbitrum, Optimism, BNB Smart Chain, Avalanche, Lisk, Berachain\n\n### Supported Tokens\n\nUSDC, USDT, ETH, BTC, MATIC, BNB, WBERA, LSK, and more\n\n### Base URL\n\n`https://api.riftfi.xyz/api/v1`"
+    "description": "HTTP wrapper around the Rift Finance Wallet SDK (`@rift-finance/wallet`). Mirrors the SDK's services as REST endpoints so consumers can use Rift from any language. Every endpoint requires an `X-API-Key` header (the project's `sk_...` key). Most user-facing endpoints additionally require an `Authorization: Bearer <accessToken>` header, where `accessToken` is obtained from `/api/v1/auth/login`, `/api/v1/auth/google`, or `/api/v1/auth/apple`.\n\n**Timeout & retry policy**: the wrapper holds requests to upstream for up to 120s (mobile-money STK push can take 30-90s). Internal retries are disabled — if a request 5xxs, the caller should decide whether retrying is safe (most operations are non-idempotent; retrying signup/transactions can produce duplicates).\n\n**Error envelope**: failures return `{ \"error\": \"<message>\" }` with an appropriate HTTP status. HTML responses from upstream (e.g. Cloudflare 502 pages) are sanitised before being returned."
   },
   "servers": [
-    {
-      "url": "https://api.riftfi.xyz/api/v1",
-      "description": "Production Server"
-    }
+    { "url": "https://rift-sdk-wrapper-j9qe.onrender.com", "description": "Production" },
+    { "url": "http://localhost:3000", "description": "Local development" }
   ],
   "tags": [
-    { "name": "Auth", "description": "User authentication and management" },
-    {
-      "name": "Merchant",
-      "description": "Merchant-specific services like invoicing"
-    },
-    { "name": "Wallet", "description": "User wallet and balance operations" },
-    {
-      "name": "Off-ramp",
-      "description": "Services for off-ramping crypto to fiat"
-    },
-    {
-      "name": "On-ramp",
-      "description": "Services for on-ramping fiat to crypto"
-    },
-    {
-      "name": "Transaction",
-      "description": "Sending transactions and fetching history"
-    },
-    {
-      "name": "Notification",
-      "description": "Managing user notification subscriptions"
-    },
-    {
-      "name": "Signer",
-      "description": "Signing transactions and messages via proxy wallet"
-    },
-    {
-      "name": "Assets",
-      "description": "Fetching information about supported chains and tokens"
-    },
-    {
-      "name": "Payment Links",
-      "description": "Create and manage payment requests and send links for crypto transfers"
-    },
-    {
-      "name": "Deposits",
-      "description": "Track and manage crypto deposits"
-    }
+    { "name": "Auth", "description": "Signup, OTP, login (email/phone/Google/Apple), session management." },
+    { "name": "Recovery", "description": "Account recovery methods — set up, list, update, delete, and password reset flows." },
+    { "name": "Wallet", "description": "Token and chain balances for the authenticated user." },
+    { "name": "Transactions", "description": "Send crypto, fetch history, calculate fees." },
+    { "name": "Signer", "description": "Sign and send arbitrary transactions / messages via the user's smart wallet (ERC-4337)." },
+    { "name": "Assets", "description": "Supported chains and tokens (Rift catalogue + per-user holdings)." },
+    { "name": "Bridge", "description": "Cross-chain asset transfers." },
+    { "name": "DeFi", "description": "On-chain token swaps (same-chain)." },
+    { "name": "Offramp", "description": "Crypto -> fiat (KES via Pretium; NGN/UGX/GHS/ETB/CDF/TZS/MWK/BRL via Paycrest)." },
+    { "name": "Onramp", "description": "Fiat -> crypto purchases via mobile money / bank transfer." },
+    { "name": "KYC", "description": "Identity verification via SmileID / Sumsub." },
+    { "name": "Merchant", "description": "Invoice creation, listing, and merchant KYB status." },
+    { "name": "Notifications", "description": "Push notification subscriptions and broadcasts." },
+    { "name": "WalletConnect", "description": "Pair with DApps over WalletConnect v2, manage sessions and requests." },
+    { "name": "Deposits", "description": "Historical on-chain USDC deposits seen by the Rift indexer." },
+    { "name": "User Management", "description": "Project admin: suspend/unsuspend users, list suspended users." }
+  ],
+  "security": [
+    { "ApiKeyAuth": [] }
   ],
   "components": {
     "securitySchemes": {
@@ -57,31 +36,82 @@
         "type": "apiKey",
         "in": "header",
         "name": "X-API-Key",
-        "description": "API key for initializing the Rift SDK for the project."
+        "description": "Project API key (`sk_...`). Required on every endpoint."
       },
       "BearerAuth": {
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "JWT",
-        "description": "Bearer token for user-level authentication."
+        "description": "User access token (ES256 JWT) returned by `/auth/login`, `/auth/google`, or `/auth/apple`. Required on user-scoped endpoints."
+      }
+    },
+    "parameters": {
+      "ChainPathParam": {
+        "name": "chainId",
+        "in": "path",
+        "required": true,
+        "description": "Chain id, e.g. `8453` (Base), `137` (Polygon). String, not numeric.",
+        "schema": { "type": "string", "example": "8453" }
+      },
+      "TokenIdPathParam": {
+        "name": "tokenId",
+        "in": "path",
+        "required": true,
+        "description": "Composite token id in the form `CHAINNAME-SYMBOL`, e.g. `BASE-USDC`.",
+        "schema": { "type": "string", "example": "BASE-USDC" }
+      },
+      "CurrencyPathParam": {
+        "name": "currency",
+        "in": "path",
+        "required": true,
+        "description": "Offramp currency code.",
+        "schema": { "$ref": "#/components/schemas/OfframpCurrency" }
       }
     },
     "schemas": {
-      "ErrorResponse": {
+      "Error": {
         "type": "object",
-        "properties": { "error": { "type": "string" } }
+        "description": "Standard error envelope returned by every wrapper endpoint on failure. The original upstream error is sanitised — HTML pages and overly long stack traces are truncated.",
+        "properties": {
+          "error": { "type": "string", "example": "Invalid OTP code" }
+        }
       },
-      "SuccessMessage": {
+      "ChainName": {
+        "type": "string",
+        "enum": ["ARBITRUM", "BASE", "OPTIMISM", "ETHEREUM", "LISK", "BNB", "BERACHAIN", "POLYGON", "BERACHAIN_TESTNET", "POLYGON_TESTNET", "AVAX", "BSC", "CELO"]
+      },
+      "TokenSymbol": {
+        "type": "string",
+        "enum": ["USDC", "USDT", "DYU", "ETH", "BTC", "WBERA", "USDC.e", "LSK", "BNB", "MATIC", "SAIL", "cUSD"]
+      },
+      "OfframpCurrency": {
+        "type": "string",
+        "enum": ["KES", "NGN", "UGX", "GHS", "ETB", "CDF", "TZS", "MWK", "BRL"]
+      },
+      "User": {
         "type": "object",
-        "properties": { "message": { "type": "string" } }
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "externalId": { "type": "string", "nullable": true },
+          "email": { "type": "string", "format": "email", "nullable": true },
+          "phoneNumber": { "type": "string", "nullable": true },
+          "displayName": { "type": "string", "nullable": true },
+          "address": { "type": "string", "description": "Smart-wallet EVM address." },
+          "paymentAccount": { "type": "string", "nullable": true },
+          "notificationEmail": { "type": "string", "format": "email", "nullable": true },
+          "instantWithdrawals": { "type": "boolean" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
       },
       "SignupRequest": {
         "type": "object",
+        "description": "Either externalId+password OR email/phoneNumber. displayName recommended.",
         "properties": {
           "externalId": { "type": "string" },
           "password": { "type": "string" },
-          "phoneNumber": { "type": "string" },
-          "email": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
+          "phoneNumber": { "type": "string", "description": "E.164 format, e.g. +254712345678" },
           "displayName": { "type": "string" },
           "paymentAccount": { "type": "string" }
         }
@@ -95,73 +125,148 @@
       },
       "LoginRequest": {
         "type": "object",
+        "description": "One of three shapes: (email + otpCode), (phoneNumber + otpCode), or (externalId + password). Send `/otp/send` first if using OTP.",
         "properties": {
-          "externalId": { "type": "string" },
-          "password": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
           "phoneNumber": { "type": "string" },
-          "email": { "type": "string" },
-          "otpCode": { "type": "string" }
+          "externalId": { "type": "string" },
+          "otpCode": { "type": "string", "example": "1234" },
+          "password": { "type": "string" }
         }
       },
       "LoginResponse": {
         "type": "object",
         "properties": {
-          "user": { "type": "string" },
-          "address": { "type": "string" },
+          "user": { "type": "string", "description": "User id." },
+          "address": { "type": "string", "description": "EVM smart-wallet address." },
           "btcAddress": { "type": "string" },
-          "accessToken": { "type": "string" }
+          "accessToken": { "type": "string", "description": "ES256 JWT — pass as `Authorization: Bearer ...` on subsequent calls." }
+        }
+      },
+      "GoogleLoginRequest": {
+        "type": "object",
+        "required": ["idToken"],
+        "properties": {
+          "idToken": { "type": "string", "description": "Google ID token (JWT) from Google Identity Services on the client (One-Tap credential or `useGoogleLogin({ flow: 'implicit' })`)." },
+          "referrer": { "type": "string", "description": "Optional referral code propagated to the new user on first sign-in." }
+        }
+      },
+      "AppleLoginRequest": {
+        "type": "object",
+        "required": ["idToken"],
+        "properties": {
+          "idToken": { "type": "string", "description": "Apple identity token (`authorization.id_token` from `AppleID.auth.signIn()` on web, identity token from `ASAuthorizationAppleIDCredential` on iOS)." },
+          "displayName": { "type": "string", "description": "First+last name composed by the client. Apple only delivers this on the FIRST sign-in — capture and forward then." },
+          "referrer": { "type": "string", "description": "Optional referral code (first sign-in only)." }
+        }
+      },
+      "OtpRequest": {
+        "type": "object",
+        "description": "Provide either email or phone, not both.",
+        "properties": {
+          "email": { "type": "string", "format": "email" },
+          "phone": { "type": "string", "description": "E.164, e.g. +254712345678" }
+        }
+      },
+      "OtpVerifyRequest": {
+        "type": "object",
+        "required": ["code"],
+        "properties": {
+          "email": { "type": "string", "format": "email" },
+          "phone": { "type": "string" },
+          "code": { "type": "string", "example": "1234" }
+        }
+      },
+      "OtpResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string" },
+          "message": { "type": "string", "nullable": true }
         }
       },
       "UpdateUserRequest": {
         "type": "object",
         "properties": {
           "displayName": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
+          "phoneNumber": { "type": "string" },
+          "notificationEmail": { "type": "string", "format": "email" },
           "paymentAccount": { "type": "string" },
-          "notificationEmail": { "type": "string" }
+          "instantWithdrawals": { "type": "boolean" },
+          "autoSwapEnabled": { "type": "boolean", "description": "Auto-bridge incoming USDC/USDT to the target chain." },
+          "autoSwapTargetChain": { "$ref": "#/components/schemas/ChainName" }
         }
       },
-      "UserResponse": {
+      "DeleteUserRequest": {
         "type": "object",
-        "properties": { "user": { "type": "object" } }
-      },
-      "CreateInvoiceRequest": {
-        "type": "object",
+        "description": "Same identification rules as login.",
         "properties": {
-          "description": { "type": "string" },
-          "chain": { "type": "string" },
-          "token": { "type": "string" },
-          "amount": { "type": "number" }
-        },
-        "required": ["description", "chain", "token", "amount"]
+          "externalId": { "type": "string" },
+          "password": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
+          "phoneNumber": { "type": "string" },
+          "otpCode": { "type": "string" }
+        }
       },
-      "Invoice": {
+      "CreateRecoveryRequest": {
+        "type": "object",
+        "required": ["externalId", "password"],
+        "properties": {
+          "externalId": { "type": "string" },
+          "password": { "type": "string" },
+          "emailRecovery": { "type": "string", "format": "email" },
+          "phoneRecovery": { "type": "string" }
+        }
+      },
+      "RecoveryData": {
         "type": "object",
         "properties": {
           "id": { "type": "string" },
-          "description": { "type": "string" },
-          "amount": { "type": "number" },
-          "status": { "type": "string" },
-          "url": { "type": "string" }
+          "email": { "type": "string", "nullable": true },
+          "phoneNumber": { "type": "string", "nullable": true },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time", "nullable": true }
         }
       },
-      "CreateInvoiceResponse": {
-        "type": "object",
-        "properties": { "invoice": { "$ref": "#/components/schemas/Invoice" } }
-      },
-      "GetInvoicesResponse": {
+      "RecoveryOptionsResponse": {
         "type": "object",
         "properties": {
-          "invoices": {
-            "type": "array",
-            "items": { "$ref": "#/components/schemas/Invoice" }
+          "recoveryOptions": {
+            "type": "object",
+            "properties": {
+              "email": { "type": "string", "description": "Masked email", "nullable": true },
+              "phone": { "type": "string", "description": "Masked phone", "nullable": true }
+            }
           }
         }
       },
-      "GetMerchantStatusResponse": {
+      "RequestPasswordResetRequest": {
         "type": "object",
+        "required": ["externalId", "method"],
         "properties": {
-          "success": { "type": "boolean" },
-          "data": { "type": "object" }
+          "externalId": { "type": "string" },
+          "method": { "type": "string", "enum": ["emailRecovery", "phoneRecovery"] }
+        }
+      },
+      "ResetPasswordRequest": {
+        "type": "object",
+        "required": ["username", "newPassword", "otpCode"],
+        "properties": {
+          "username": { "type": "string", "description": "External ID." },
+          "newPassword": { "type": "string" },
+          "otpCode": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
+          "phoneNumber": { "type": "string" }
+        }
+      },
+      "AddRecoveryMethodRequest": {
+        "type": "object",
+        "required": ["externalId", "password", "method", "value"],
+        "properties": {
+          "externalId": { "type": "string" },
+          "password": { "type": "string" },
+          "method": { "type": "string", "enum": ["emailRecovery", "phoneRecovery"] },
+          "value": { "type": "string" }
         }
       },
       "Balance": {
@@ -169,1997 +274,1898 @@
         "properties": {
           "amount": { "type": "number" },
           "chain": { "type": "string" },
+          "token": { "type": "string" },
+          "chainName": { "type": "string" }
+        }
+      },
+      "TransactionRequest": {
+        "type": "object",
+        "required": ["to", "value", "token", "chain"],
+        "description": "Plus ONE auth shape: (externalId+password) OR (phoneNumber+otpCode) OR (email+otpCode).",
+        "properties": {
+          "to": { "type": "string", "description": "Recipient EVM address." },
+          "value": { "type": "string", "description": "Amount in human units (e.g. '10' for 10 USDC)." },
+          "token": { "$ref": "#/components/schemas/TokenSymbol" },
+          "chain": { "$ref": "#/components/schemas/ChainName" },
+          "type": { "type": "string", "enum": ["gasless", "normal"], "default": "gasless" },
+          "intent": { "type": "string", "enum": ["unlock"], "description": "Optional intent hint for fee estimation." },
+          "externalId": { "type": "string" },
+          "password": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
+          "phoneNumber": { "type": "string" },
+          "otpCode": { "type": "string" }
+        }
+      },
+      "TransactionResponse": {
+        "type": "object",
+        "properties": {
+          "message": { "type": "string" },
+          "transactionHash": { "type": "string" }
+        }
+      },
+      "Transaction": {
+        "type": "object",
+        "properties": {
+          "transaction_hash": { "type": "string" },
+          "user_email": { "type": "string" },
+          "amount": { "type": "string" },
+          "chain": { "type": "string" },
+          "token": { "type": "string" },
+          "recipient_address": { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "TransactionFeeResponse": {
+        "type": "object",
+        "properties": {
+          "amount": { "type": "number" },
           "token": { "type": "string" }
         }
       },
-      "ApiResponseBalanceArray": {
+      "WalletChain": {
         "type": "object",
         "properties": {
-          "data": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "description": { "type": "string", "nullable": true },
+          "icon": { "type": "string", "nullable": true },
+          "enabled": { "type": "boolean" }
+        }
+      },
+      "WalletToken": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "description": "Format: CHAINNAME-SYMBOL, e.g. BASE-USDC." },
+          "name": { "type": "string" },
+          "description": { "type": "string", "nullable": true },
+          "enabled": { "type": "boolean" },
+          "contract_address": { "type": "string", "nullable": true },
+          "chain_id": { "type": "string" },
+          "icon": { "type": "string", "nullable": true }
+        }
+      },
+      "AssetsListResponse": {
+        "type": "object",
+        "properties": {
+          "message": { "type": "string" },
+          "data": { "type": "array", "items": { "$ref": "#/components/schemas/WalletToken" } }
+        }
+      },
+      "ChainsListResponse": {
+        "type": "object",
+        "properties": {
+          "message": { "type": "string" },
+          "data": { "type": "array", "items": { "$ref": "#/components/schemas/WalletChain" } }
+        }
+      },
+      "BridgeQuoteRequest": {
+        "type": "object",
+        "required": ["sourceChain", "destinationChain", "token", "amount"],
+        "properties": {
+          "sourceChain": { "type": "string" },
+          "destinationChain": { "type": "string" },
+          "token": { "$ref": "#/components/schemas/TokenSymbol" },
+          "amount": { "type": "string" }
+        }
+      },
+      "BridgeQuoteResponse": {
+        "type": "object",
+        "properties": {
+          "sourceChain": { "type": "string" },
+          "destinationChain": { "type": "string" },
+          "token": { "type": "string" },
+          "inputAmount": { "type": "string" },
+          "outputAmount": { "type": "string" },
+          "fee": { "type": "string" },
+          "feeBps": { "type": "number" },
+          "estimatedTime": { "type": "string" }
+        }
+      },
+      "BridgeExecuteRequest": {
+        "type": "object",
+        "required": ["sourceChain", "destinationChain", "token", "amount"],
+        "properties": {
+          "sourceChain": { "type": "string" },
+          "destinationChain": { "type": "string" },
+          "token": { "type": "string" },
+          "amount": { "type": "string" },
+          "recipient": { "type": "string", "description": "Optional - defaults to user's smart wallet on the destination chain." }
+        }
+      },
+      "BridgeExecuteResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "sourceChain": { "type": "string" },
+          "destinationChain": { "type": "string" },
+          "token": { "type": "string" },
+          "inputAmount": { "type": "string" },
+          "outputAmount": { "type": "string" },
+          "fee": { "type": "string" },
+          "recipient": { "type": "string" },
+          "transactionHash": { "type": "string" },
+          "smartWalletAddress": { "type": "string" },
+          "sourceChainId": { "type": "number" },
+          "destinationChainId": { "type": "number" }
+        }
+      },
+      "BridgeRoutesResponse": {
+        "type": "object",
+        "properties": {
+          "routes": {
+            "type": "object",
+            "additionalProperties": { "type": "array", "items": { "type": "string" } },
+            "description": "Map of sourceChain -> [destinationChains]."
+          },
+          "supportedTokens": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "SwapRequest": {
+        "type": "object",
+        "required": ["chain", "flow", "token_to_sell", "token_to_buy", "value"],
+        "description": "Same-chain token swap. Use `flow: gasless` for UserOp-sponsored gas, `normal` for direct payment.",
+        "properties": {
+          "chain": { "$ref": "#/components/schemas/ChainName" },
+          "flow": { "type": "string", "enum": ["normal", "gasless"] },
+          "token_to_sell": { "type": "string" },
+          "token_to_buy": { "type": "string" },
+          "value": { "type": "string", "description": "Amount of token_to_sell, human units." },
+          "token_to_sell_address": { "type": "string", "description": "ERC-20 contract - only for arbitrary tokens not in the SDK list." },
+          "token_to_buy_address": { "type": "string" },
+          "amountOut": { "type": "string", "description": "Optional exact-out target." },
+          "isEth": { "type": "boolean", "description": "True if selling native ETH (not WETH)." },
+          "isBuyingEth": { "type": "boolean", "description": "True if buying native ETH (not WETH)." }
+        }
+      },
+      "SwapResponse": {
+        "type": "object",
+        "properties": {
+          "swap successful": { "type": "string" }
+        }
+      },
+      "PreviewExchangeRateRequest": {
+        "type": "object",
+        "required": ["currency"],
+        "properties": {
+          "currency": { "$ref": "#/components/schemas/OfframpCurrency" },
+          "amount": { "type": "number", "description": "USDC amount - required to get feeBreakdown." },
+          "type": { "type": "string", "enum": ["offramp", "onramp"], "description": "Use 'offramp' for selling crypto, 'onramp' for buying - they have different rates." }
+        }
+      },
+      "PreviewExchangeRateResponse": {
+        "type": "object",
+        "properties": {
+          "rate": { "type": "number" },
+          "buying_rate": { "type": "number", "description": "OFFRAMP rate - fiat per USDC when cashing out." },
+          "selling_rate": { "type": "number", "description": "ONRAMP rate - fiat per USDC when buying crypto." },
+          "quoted_rate": { "type": "number" },
+          "feePercentage": { "type": "number" },
+          "feeBps": { "type": "number" },
+          "feeBreakdown": { "type": "object", "additionalProperties": true }
+        }
+      },
+      "PayRequest": {
+        "type": "object",
+        "required": ["token", "currency", "chain", "recipient"],
+        "description": "Either `amount` (USDC to spend) or `localAmount` (exact fiat payout) must be set. `recipient` is a JSON-stringified object whose shape depends on the currency - see description on the endpoint.",
+        "properties": {
+          "token": { "type": "string", "enum": ["USDC", "USDT"] },
+          "amount": { "type": "number" },
+          "localAmount": { "type": "number" },
+          "currency": { "$ref": "#/components/schemas/OfframpCurrency" },
+          "chain": { "$ref": "#/components/schemas/ChainName" },
+          "recipient": { "type": "string", "description": "JSON-stringified per-currency recipient object." },
+          "otpCode": { "type": "string" },
+          "password": { "type": "string" },
+          "shortcode": { "type": "string" },
+          "utilities": { "type": "string" },
+          "service_code": { "type": "string" },
+          "contact_number": { "type": "string" }
+        }
+      },
+      "OfframpOrder": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "status": { "type": "string" },
+          "transactionCode": { "type": "string" },
+          "amount": { "type": "number" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "transaction_hash": { "type": "string", "nullable": true },
+          "receipt_number": { "type": "string", "nullable": true },
+          "currency": { "type": "string" },
+          "chain": { "type": "string" },
+          "token": { "type": "string" },
+          "totalDeducted": { "type": "number" },
+          "fee": { "type": "number" },
+          "feePercentage": { "type": "number" }
+        }
+      },
+      "GetSupportedInstitutionsResponse": {
+        "type": "object",
+        "properties": {
+          "currency": { "type": "string" },
+          "institutions": { "type": "array", "items": { "type": "string" } },
+          "payment_types": {
             "type": "array",
-            "items": { "$ref": "#/components/schemas/Balance" }
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": { "type": "string" },
+                "name": { "type": "string" },
+                "description": { "type": "string" },
+                "requires_account_number": { "type": "boolean" }
+              }
+            }
+          },
+          "mobile_networks": { "type": "array", "items": { "type": "string" } },
+          "metadata": {
+            "type": "object",
+            "properties": {
+              "country": { "type": "string" },
+              "currency_symbol": { "type": "string" },
+              "supports_banks": { "type": "boolean" },
+              "supports_mobile_money": { "type": "boolean" }
+            }
           }
         }
       },
       "BuyRequest": {
         "type": "object",
+        "required": ["amount", "chain", "asset", "country_code"],
         "properties": {
-          "shortcode": { "type": "string" },
-          "amount": { "type": "number" },
-          "chain": { "type": "string" },
-          "asset": { "type": "string" },
-          "mobile_network": { "type": "string" },
-          "country_code": { "type": "string" }
+          "amount": { "type": "number", "description": "Local fiat amount (e.g. 1000 = 1000 KES), NOT USDC." },
+          "localAmount": { "type": "number" },
+          "chain": { "type": "string", "enum": ["polygon", "base"] },
+          "asset": { "type": "string", "enum": ["USDC"] },
+          "country_code": { "type": "string", "example": "KE" },
+          "shortcode": { "type": "string", "description": "Pretium mobile-money shortcode (KES path)." },
+          "mobile_network": { "type": "string", "description": "Pretium: 'Safaricom', 'Airtel'." },
+          "refund_account": { "type": "string", "description": "Paycrest: refund account if the conversion fails." }
         }
       },
       "BuyResponse": {
         "type": "object",
+        "description": "Pretium and Paycrest return different shapes - both are valid.",
         "properties": {
           "transaction_code": { "type": "string" },
           "status": { "type": "string" },
-          "message": { "type": "string" }
+          "message": { "type": "string" },
+          "provider": { "type": "string", "enum": ["pretium", "paycrest"] },
+          "payment": {
+            "type": "object",
+            "description": "Paycrest only - bank deposit info.",
+            "properties": {
+              "bankAccount": { "type": "string" },
+              "validUntil": { "type": "string", "format": "date-time" },
+              "amount": { "type": "number" },
+              "currency": { "type": "string" },
+              "reference": { "type": "string" }
+            }
+          }
         }
       },
       "OnrampStatusResponse": {
         "type": "object",
         "properties": {
+          "id": { "type": "string" },
           "status": { "type": "string" },
           "transactionCode": { "type": "string" },
-          "receipt_number": { "type": "string" }
+          "receipt_number": { "type": "string", "nullable": true },
+          "transaction_hash": { "type": "string", "nullable": true },
+          "amount": { "type": "number" },
+          "shortcode": { "type": "string" },
+          "chain": { "type": "string" },
+          "asset": { "type": "string" },
+          "account_number": { "type": "string" },
+          "currency": { "type": "string" },
+          "token": { "type": "string" },
+          "public_name": { "type": "string" }
         }
       },
-      "PreviewExchangeRateRequest": {
+      "Deposit": {
         "type": "object",
         "properties": {
-          "currency": { "type": "string", "enum": ["NGN", "KES"] }
-        },
-        "required": ["currency"]
+          "id": { "type": "string" },
+          "userId": { "type": "string" },
+          "transactionHash": { "type": "string" },
+          "blockNumber": { "type": "string" },
+          "blockTimestamp": { "type": "string" },
+          "fromAddress": { "type": "string" },
+          "toAddress": { "type": "string" },
+          "amount": { "type": "string" },
+          "rawAmount": { "type": "string" },
+          "exchangeRate": { "type": "number" },
+          "kesAmount": { "type": "number" },
+          "processed": { "type": "boolean" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "user": {
+            "type": "object",
+            "properties": {
+              "email": { "type": "string", "nullable": true },
+              "phoneNumber": { "type": "string", "nullable": true }
+            }
+          }
+        }
       },
-      "SendPaymentLinkRequest": {
+      "KYCTokenRequest": {
+        "type": "object",
+        "required": ["country_code", "identifier"],
+        "properties": {
+          "country_code": { "type": "string", "example": "KE" },
+          "identifier": { "type": "string", "description": "Email, phone, or externalId." }
+        }
+      },
+      "KYCTokenResponse": {
         "type": "object",
         "properties": {
-          "paymentLink": { "type": "string" },
-          "message": { "type": "string" },
+          "token": { "type": "string" },
+          "provider": { "type": "string", "enum": ["smileid", "sumsub"] },
+          "expires_at": { "type": "string", "format": "date-time" },
+          "verificationUrl": { "type": "string" },
+          "linkDelivered": { "type": "boolean" },
+          "deliveryMethod": { "type": "string" }
+        }
+      },
+      "KYCStatusResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["verified", "failed", "pending", "provisional"] },
+          "message": { "type": "string" }
+        }
+      },
+      "KYCUserExistsResponse": {
+        "type": "object",
+        "properties": {
+          "exists": { "type": "boolean" },
+          "userId": { "type": "string" },
+          "kycStatus": { "type": "string", "enum": ["verified", "failed", "pending", "provisional"] }
+        }
+      },
+      "KYCJobStatusResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "status": { "type": "string", "enum": ["verified", "failed", "pending", "provisional"] },
+          "complete": { "type": "boolean" },
+          "passed": { "type": "boolean" },
+          "underReview": { "type": "boolean" },
+          "message": { "type": "string" }
+        }
+      },
+      "Invoice": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "description": { "type": "string" },
+          "chain": { "type": "string" },
+          "token": { "type": "string" },
+          "amount": { "type": "number" },
+          "recipientEmail": { "type": "string", "format": "email", "nullable": true },
+          "recipientPhone": { "type": "string", "nullable": true },
+          "status": { "type": "string", "enum": ["PENDING", "COMPLETED", "EXPIRED"] },
+          "url": { "type": "string", "format": "uri" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "paidAt": { "type": "string", "format": "date-time", "nullable": true },
+          "expiresAt": { "type": "string", "format": "date-time", "nullable": true },
+          "userId": { "type": "string" }
+        }
+      },
+      "CreateInvoiceRequest": {
+        "type": "object",
+        "required": ["description", "chain", "token", "amount"],
+        "properties": {
+          "description": { "type": "string" },
+          "chain": { "$ref": "#/components/schemas/ChainName" },
+          "token": { "$ref": "#/components/schemas/TokenSymbol" },
+          "amount": { "type": "number" },
+          "recipientEmail": { "type": "string", "format": "email" },
           "recipientPhone": { "type": "string" },
-          "recipientEmail": { "type": "string" }
-        },
-        "required": ["paymentLink", "message"]
+          "originUrl": { "type": "string", "format": "uri" }
+        }
       },
-      "PayRequest": {
+      "GetMerchantStatusResponse": {
         "type": "object",
         "properties": {
-          "token": { "type": "string", "enum": ["USDC"] },
-          "amount": { "type": "number" },
-          "currency": { "type": "string", "enum": ["NGN", "KES"] },
-          "chain": { "type": "string", "enum": ["polygon", "base"] },
-          "recipient": { "type": "string" }
-        },
-        "required": ["token", "amount", "currency", "chain", "recipient"]
-      },
-      "CreateOfframpOrderRequest": {
-        "type": "object",
-        "properties": {
-          "token": { "type": "string", "enum": ["USDC"] },
-          "amount": { "type": "number" },
-          "currency": { "type": "string", "enum": ["NGN", "KES"] },
-          "chain": { "type": "string", "enum": ["polygon", "base"] },
-          "recipient": { "type": "string" }
-        },
-        "required": ["token", "amount", "currency", "chain", "recipient"]
-      },
-      "GetWithdrawalFeeRequest": {
-        "type": "object",
-        "properties": {
-          "amount": { "type": "number" }
-        },
-        "required": ["amount"]
-      },
-      "PollOfframpOrderRequest": {
-        "type": "object",
-        "properties": {
-          "transactionCode": { "type": "string" },
-          "currency": { "type": "string", "enum": ["NGN", "KES"] }
-        },
-        "required": ["transactionCode", "currency"]
+          "success": { "type": "boolean" },
+          "data": {
+            "type": "object",
+            "properties": {
+              "userId": { "type": "string" },
+              "email": { "type": "string", "nullable": true },
+              "phoneNumber": { "type": "string", "nullable": true },
+              "externalId": { "type": "string", "nullable": true },
+              "displayName": { "type": "string", "nullable": true },
+              "merchantApproved": { "type": "boolean" },
+              "approvedAt": { "type": "string", "format": "date-time", "nullable": true },
+              "approvedBy": { "type": "string", "nullable": true },
+              "kybNotes": { "type": "string", "nullable": true }
+            }
+          }
+        }
       },
       "NotificationSubscriptionRequest": {
         "type": "object",
+        "required": ["subscriberId"],
         "properties": {
-          "subscriberId": { "type": "string" },
+          "subscriberId": { "type": "string", "description": "Unique device/subscriber id (e.g. Webpushr subscriber id)." },
           "deviceInfo": { "type": "string" },
-          "platform": { "type": "string" }
+          "platform": { "type": "string", "enum": ["web", "mobile"] }
         }
-      },
-      "DeleteUserRequest": {
-        "type": "object",
-        "properties": {
-          "externalId": { "type": "string" },
-          "password": { "type": "string" },
-          "phoneNumber": { "type": "string" },
-          "email": { "type": "string" },
-          "otpCode": { "type": "string" }
-        }
-      },
-      "SendOtpRequest": {
-        "type": "object",
-        "properties": {
-          "phone": { "type": "string" },
-          "email": { "type": "string" }
-        },
-        "description": "Must provide either a phone number or an email.",
-        "oneOf": [{ "required": ["phone"] }, { "required": ["email"] }]
-      },
-      "VerifyOtpRequest": {
-        "type": "object",
-        "properties": {
-          "phone": { "type": "string" },
-          "email": { "type": "string" },
-          "code": { "type": "string" }
-        },
-        "description": "Must provide a verification code and either a phone number or an email.",
-        "oneOf": [
-          { "required": ["code", "phone"] },
-          { "required": ["code", "email"] }
-        ]
-      },
-      "CreateRecoveryRequest": {
-        "type": "object",
-        "properties": {
-          "externalId": { "type": "string" },
-          "password": { "type": "string" },
-          "emailRecovery": { "type": "string" },
-          "phoneRecovery": { "type": "string" }
-        },
-        "required": ["externalId", "password"]
-      },
-      "RequestPasswordResetRequest": {
-        "type": "object",
-        "properties": {
-          "externalId": { "type": "string" },
-          "method": {
-            "type": "string",
-            "enum": ["emailRecovery", "phoneRecovery"]
-          }
-        },
-        "required": ["externalId", "method"]
-      },
-      "ResetPasswordRequest": {
-        "type": "object",
-        "properties": {
-          "username": { "type": "string" },
-          "newPassword": { "type": "string" },
-          "email": { "type": "string" },
-          "otpCode": { "type": "string" },
-          "phoneNumber": { "type": "string" }
-        },
-        "required": ["username", "newPassword", "otpCode"]
-      },
-      "UpdateRecoveryRequest": {
-        "type": "object",
-        "properties": {
-          "externalId": { "type": "string" },
-          "password": { "type": "string" },
-          "emailRecovery": { "type": "string" },
-          "phoneRecovery": { "type": "string" }
-        },
-        "required": ["externalId", "password"]
-      },
-      "AddRecoveryMethodRequest": {
-        "type": "object",
-        "properties": {
-          "externalId": { "type": "string" },
-          "password": { "type": "string" },
-          "method": {
-            "type": "string",
-            "enum": ["emailRecovery", "phoneRecovery"]
-          },
-          "value": { "type": "string" }
-        },
-        "required": ["externalId", "password", "method", "value"]
-      },
-      "RemoveRecoveryMethodRequest": {
-        "type": "object",
-        "properties": {
-          "externalId": { "type": "string" },
-          "password": { "type": "string" },
-          "method": {
-            "type": "string",
-            "enum": ["emailRecovery", "phoneRecovery"]
-          }
-        },
-        "required": ["externalId", "password", "method"]
-      },
-      "UpdateRecoveryMethodRequest": {
-        "type": "object",
-        "properties": {
-          "externalId": { "type": "string" },
-          "password": { "type": "string" },
-          "method": {
-            "type": "string",
-            "enum": ["emailRecovery", "phoneRecovery"]
-          },
-          "value": { "type": "string" }
-        },
-        "required": ["externalId", "password", "method", "value"]
-      },
-      "GetMyRecoveryMethodsRequest": {
-        "type": "object",
-        "properties": {
-          "externalId": { "type": "string" },
-          "password": { "type": "string" }
-        },
-        "required": ["externalId", "password"]
-      },
-      "DeleteAllRecoveryMethodsRequest": {
-        "type": "object",
-        "properties": {
-          "externalId": { "type": "string" },
-          "password": { "type": "string" }
-        },
-        "required": ["externalId", "password"]
-      },
-      "TransactionRequest": {
-        "type": "object",
-        "properties": {
-          "to": { "type": "string" },
-          "value": { "type": "string" },
-          "token": {
-            "type": "string",
-            "enum": [
-              "USDC",
-              "USDT",
-              "DYU",
-              "ETH",
-              "BTC",
-              "WBERA",
-              "USDC.e",
-              "LSK",
-              "BNB",
-              "MATIC",
-              "SAIL"
-            ]
-          },
-          "chain": {
-            "type": "string",
-            "enum": [
-              "ARBITRUM",
-              "BASE",
-              "OPTIMISM",
-              "ETHEREUM",
-              "LISK",
-              "BNB",
-              "BERACHAIN",
-              "POLYGON",
-              "BERACHAIN_TESTNET",
-              "POLYGON_TESTNET",
-              "AVAX",
-              "BSC"
-            ]
-          },
-          "intent": { "type": "string", "enum": ["unlock"] },
-          "type": { "type": "string" },
-          "externalId": { "type": "string" },
-          "password": { "type": "string" },
-          "phoneNumber": { "type": "string" },
-          "otpCode": { "type": "string" },
-          "email": { "type": "string" }
-        },
-        "required": ["to", "value", "token", "chain"],
-        "oneOf": [
-          { "required": ["externalId", "password"] },
-          { "required": ["phoneNumber", "otpCode"] },
-          { "required": ["email", "otpCode"] }
-        ],
-        "description": "Requires base transaction details and one of the authentication methods."
-      },
-      "TransactionHistoryRequest": {
-        "type": "object",
-        "properties": {
-          "limit": { "type": "integer" },
-          "page": { "type": "integer" },
-          "token": { "type": "string" },
-          "chain": { "type": "string" }
-        }
-      },
-      "TransactionFeeRequest": {
-        "type": "object",
-        "properties": {
-          "recipient": { "type": "string" },
-          "amount": { "type": "string" },
-          "chain": { "type": "string" },
-          "token": { "type": "string" }
-        },
-        "required": ["recipient", "amount", "chain", "token"]
-      },
-      "GetWalletInstanceRequest": {
-        "type": "object",
-        "properties": {
-          "chain": { "type": "string" }
-        },
-        "required": ["chain"]
-      },
-      "SignTransactionRequest": {
-        "type": "object",
-        "properties": {
-          "chain": {
-            "type": "string",
-            "enum": [
-              "ARBITRUM",
-              "BASE",
-              "OPTIMISM",
-              "ETHEREUM",
-              "LISK",
-              "BNB",
-              "BERACHAIN",
-              "POLYGON",
-              "BERACHAIN_TESTNET",
-              "POLYGON_TESTNET",
-              "AVAX",
-              "BSC"
-            ]
-          },
-          "transactionData": {
-            "type": "object",
-            "properties": {
-              "to": { "type": "string" },
-              "value": { "type": "string" },
-              "data": { "type": "string" },
-              "gasLimit": { "type": "string" },
-              "gasPrice": { "type": "string" },
-              "maxFeePerGas": { "type": "string" },
-              "maxPriorityFeePerGas": { "type": "string" },
-              "nonce": { "type": "number" },
-              "type": { "type": "number" },
-              "chainId": { "type": "number" }
-            },
-            "additionalProperties": true
-          }
-        },
-        "required": ["chain", "transactionData"],
-        "additionalProperties": true
-      },
-      "SendTransactionRequest": {
-        "type": "object",
-        "properties": {
-          "chain": {
-            "type": "string",
-            "enum": [
-              "ARBITRUM",
-              "BASE",
-              "OPTIMISM",
-              "ETHEREUM",
-              "LISK",
-              "BNB",
-              "BERACHAIN",
-              "POLYGON",
-              "BERACHAIN_TESTNET",
-              "POLYGON_TESTNET",
-              "AVAX",
-              "BSC"
-            ]
-          },
-          "transactionData": {
-            "type": "object",
-            "properties": {
-              "to": { "type": "string" },
-              "value": { "type": "string" },
-              "data": { "type": "string" },
-              "gasLimit": { "type": "string" },
-              "gasPrice": { "type": "string" },
-              "maxFeePerGas": { "type": "string" },
-              "maxPriorityFeePerGas": { "type": "string" },
-              "nonce": { "type": "number" },
-              "type": { "type": "number" },
-              "chainId": { "type": "number" }
-            },
-            "additionalProperties": true
-          }
-        },
-        "required": ["chain", "transactionData"],
-        "additionalProperties": true
-      },
-      "SignMessageRequest": {
-        "type": "object",
-        "properties": {
-          "chain": {
-            "type": "string",
-            "enum": [
-              "ARBITRUM",
-              "BASE",
-              "OPTIMISM",
-              "ETHEREUM",
-              "LISK",
-              "BNB",
-              "BERACHAIN",
-              "POLYGON",
-              "BERACHAIN_TESTNET",
-              "POLYGON_TESTNET",
-              "AVAX",
-              "BSC"
-            ]
-          },
-          "message": { "type": "string" }
-        },
-        "required": ["chain", "message"],
-        "additionalProperties": true
-      },
-      "UnsubscribeRequest": {
-        "type": "object",
-        "properties": {
-          "subscriberId": { "type": "string" }
-        },
-        "required": ["subscriberId"]
       },
       "NotificationTestRequest": {
         "type": "object",
+        "required": ["subscriberId", "message"],
         "properties": {
           "subscriberId": { "type": "string" },
           "message": { "type": "string" },
-          "targetUrl": { "type": "string" },
-          "title": { "type": "string" }
-        },
-        "required": ["subscriberId", "message"]
+          "title": { "type": "string" },
+          "targetUrl": { "type": "string", "format": "uri" }
+        }
       },
       "NotificationSendRequest": {
         "type": "object",
+        "required": ["message"],
         "properties": {
           "message": { "type": "string" },
-          "targetUrl": { "type": "string" },
-          "title": { "type": "string" }
-        },
-        "required": ["message"]
+          "title": { "type": "string" },
+          "targetUrl": { "type": "string", "format": "uri" }
+        }
+      },
+      "WalletConnectPairRequest": {
+        "type": "object",
+        "required": ["uri", "chain"],
+        "properties": {
+          "uri": { "type": "string", "description": "WalletConnect v2 URI starting with wc:" },
+          "chain": { "type": "string" }
+        }
+      },
+      "WalletConnectPairResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "topic": { "type": "string" },
+          "smartWalletAddress": { "type": "string" },
+          "chain": { "type": "string" },
+          "chainId": { "type": "number" },
+          "peerName": { "type": "string" },
+          "peerUrl": { "type": "string" }
+        }
+      },
+      "GetWalletInstanceRequest": {
+        "type": "object",
+        "required": ["chain"],
+        "properties": {
+          "chain": { "$ref": "#/components/schemas/ChainName" }
+        }
+      },
+      "WalletInstanceResponse": {
+        "type": "object",
+        "properties": {
+          "address": { "type": "string" },
+          "publicKey": { "type": "string" },
+          "provider": {
+            "type": "object",
+            "properties": {
+              "url": { "type": "string" },
+              "chainId": { "type": "number" },
+              "name": { "type": "string" }
+            }
+          },
+          "chain": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "number" },
+              "name": { "type": "string" },
+              "nativeToken": { "type": "string" },
+              "tokens": { "type": "array", "items": { "type": "string" } }
+            }
+          },
+          "_isWallet": { "type": "boolean" },
+          "_isSigner": { "type": "boolean" },
+          "availableMethods": {
+            "type": "object",
+            "properties": {
+              "getAddress": { "type": "string" },
+              "getBalance": { "type": "string" },
+              "sendTransaction": { "type": "string" },
+              "signTransaction": { "type": "string" },
+              "signMessage": { "type": "string" }
+            }
+          }
+        }
+      },
+      "SignTransactionRequest": {
+        "type": "object",
+        "required": ["chain", "transactionData"],
+        "properties": {
+          "chain": { "$ref": "#/components/schemas/ChainName" },
+          "transactionData": {
+            "type": "object",
+            "properties": {
+              "to": { "type": "string" },
+              "value": { "type": "string" },
+              "data": { "type": "string" },
+              "gasLimit": { "type": "string" },
+              "gasPrice": { "type": "string" },
+              "maxFeePerGas": { "type": "string" },
+              "maxPriorityFeePerGas": { "type": "string" },
+              "nonce": { "type": "number" },
+              "type": { "type": "number" },
+              "chainId": { "type": "number" }
+            }
+          }
+        }
+      },
+      "SignTransactionResponse": {
+        "type": "object",
+        "properties": {
+          "signedTransaction": { "type": "string" },
+          "txHash": { "type": "string" },
+          "from": { "type": "string" },
+          "originalTx": { "type": "object" }
+        }
+      },
+      "SendTransactionRequest": {
+        "type": "object",
+        "required": ["chain", "transactionData"],
+        "description": "Executes a call through the user's smart wallet as an ERC-4337 UserOperation. Sender = smart wallet, signer = EOA owner. Pass `paymasterToken` (ERC-20 address) to pay gas in a token; omit for sponsored gas.",
+        "properties": {
+          "chain": { "$ref": "#/components/schemas/ChainName" },
+          "transactionData": {
+            "type": "object",
+            "required": ["to"],
+            "properties": {
+              "to": { "type": "string" },
+              "value": { "type": "string" },
+              "data": { "type": "string" }
+            }
+          },
+          "paymasterToken": { "type": "string", "description": "ERC-20 contract to pay gas in. Omit for sponsored gas." }
+        }
+      },
+      "SendTransactionResponse": {
+        "type": "object",
+        "description": "Returns a UserOperation hash (NOT a classic Ethereum tx hash). Track with a bundler-aware explorer like jiffyscan.xyz/userOpHash/<hash>.",
+        "properties": {
+          "success": { "type": "boolean" },
+          "hash": { "type": "string", "description": "UserOperation hash - primary tracking id." },
+          "userOperationHash": { "type": "string" },
+          "transactionHash": { "type": "string", "description": "Classic tx hash when the SDK can disambiguate (e.g. on Lisk)." },
+          "to": { "type": "string" },
+          "from": { "type": "string", "description": "Smart wallet address (not EOA)." },
+          "owner": { "type": "string", "description": "EOA that signed the UserOperation." },
+          "chainId": { "type": "number" },
+          "gasUsed": { "type": "string" },
+          "paymasterToken": { "type": "string", "nullable": true },
+          "raw": { "type": "object" }
+        }
+      },
+      "SignMessageRequest": {
+        "type": "object",
+        "required": ["chain", "message"],
+        "properties": {
+          "chain": { "$ref": "#/components/schemas/ChainName" },
+          "message": { "type": "string" }
+        }
+      },
+      "SignMessageResponse": {
+        "type": "object",
+        "properties": {
+          "signature": { "type": "string" },
+          "message": { "type": "string" },
+          "signer": { "type": "string" },
+          "messageHash": { "type": "string" },
+          "recoveredAddress": { "type": "string" }
+        }
+      },
+      "SuspendUserRequest": {
+        "type": "object",
+        "description": "Provide ONE user identifier and ONE project-owner identifier.",
+        "properties": {
+          "phoneNumber": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
+          "externalId": { "type": "string" },
+          "userId": { "type": "string" },
+          "reason": { "type": "string" },
+          "projectOwnerPhone": { "type": "string" },
+          "projectOwnerEmail": { "type": "string", "format": "email" }
+        }
+      },
+      "SuspendUserResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "message": { "type": "string" },
+          "data": {
+            "type": "object",
+            "properties": {
+              "userId": { "type": "string" },
+              "email": { "type": "string", "nullable": true },
+              "phoneNumber": { "type": "string", "nullable": true },
+              "externalId": { "type": "string", "nullable": true },
+              "suspendedAt": { "type": "string", "format": "date-time" },
+              "suspendedReason": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Missing or invalid X-API-Key (and/or Authorization header on user-scoped routes).",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "BadRequest": {
+        "description": "Validation failure - invalid input, missing required field, or upstream rejected the call.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "ServerError": {
+        "description": "Wrapper or upstream server error. Errors include a sanitised message (HTML pages are normalised).",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
       }
     }
   },
   "paths": {
-    "/auth/signup": {
+    "/api/v1/auth/signup": {
       "post": {
         "tags": ["Auth"],
-        "summary": "Register a new user",
-        "security": [{ "ApiKeyAuth": [] }],
+        "summary": "Create a new wallet account",
+        "description": "Creates a Rift wallet account scoped to the project identified by the X-API-Key. Use either externalId+password OR email/phoneNumber. The new user does NOT have a session - call `/auth/login` next.",
         "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/SignupRequest" }
-            }
-          }
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SignupRequest" } } }
         },
         "responses": {
-          "201": {
-            "description": "User created",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/SignupResponse" }
-              }
-            }
-          }
+          "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SignupResponse" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
         }
       }
     },
-    "/auth/login": {
+    "/api/v1/auth/login": {
       "post": {
         "tags": ["Auth"],
-        "summary": "Log in a user",
-        "security": [{ "ApiKeyAuth": [] }],
+        "summary": "Authenticate and receive a bearer token",
+        "description": "Returns an `accessToken` (ES256 JWT) to use as `Authorization: Bearer ...` on all subsequent user-scoped requests. Three auth shapes supported - see request schema.",
         "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/LoginRequest" }
-            }
-          }
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginRequest" } } }
         },
         "responses": {
-          "200": {
-            "description": "Login successful",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/LoginResponse" }
-              }
-            }
-          }
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginResponse" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
         }
       }
     },
-    "/auth/user/me": {
+    "/api/v1/auth/google": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Sign in with Google",
+        "description": "Sign in or sign up on first use with a Google ID token. Once an account is bound to Google, password/OTP login is rejected for that account - the user must continue using Google.",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GoogleLoginRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginResponse" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/api/v1/auth/apple": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Sign in with Apple",
+        "description": "Sign in or sign up on first use with an Apple identity token. Apple only delivers the user's email and name on the FIRST sign-in - pass `displayName` then. Apple-bound accounts are NOT locked to Apple; email/OTP login still works for users with a non-relay email.",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AppleLoginRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginResponse" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/api/v1/auth/otp/send": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Send an OTP via SMS or email",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OtpRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OtpResponse" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/api/v1/auth/otp/verify": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Verify an OTP code (no session created)",
+        "description": "Useful for standalone OTP confirmation. For login, use `/auth/login` directly - it verifies the OTP AND issues a session in one round-trip.",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OtpVerifyRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OtpResponse" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/api/v1/auth/user/me": {
       "get": {
         "tags": ["Auth"],
-        "summary": "Get current user details",
+        "summary": "Get the authenticated user's profile",
         "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
         "responses": {
           "200": {
-            "description": "User details",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/UserResponse" }
-              }
-            }
-          }
+            "description": "OK",
+            "content": { "application/json": { "schema": {
+              "type": "object",
+              "properties": { "user": { "$ref": "#/components/schemas/User" } }
+            } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
         }
       }
     },
-    "/auth/user/update": {
+    "/api/v1/auth/user/update": {
       "put": {
         "tags": ["Auth"],
-        "summary": "Update user details",
+        "summary": "Update the authenticated user's profile",
+        "description": "Use to change displayName, email, phone, notification email, payment account, or to toggle auto-swap.",
         "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
         "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateUserRequest"
-              }
-            }
-          }
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateUserRequest" } } }
         },
         "responses": {
           "200": {
-            "description": "User updated successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SuccessMessage"
-                }
+            "description": "OK",
+            "content": { "application/json": { "schema": {
+              "type": "object",
+              "properties": {
+                "message": { "type": "string" },
+                "user": { "$ref": "#/components/schemas/User" }
               }
-            }
-          }
+            } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
         }
       }
     },
-    "/auth/user/delete": {
+    "/api/v1/auth/user/delete": {
       "delete": {
         "tags": ["Auth"],
-        "summary": "Delete a user",
+        "summary": "Permanently delete the authenticated user's account",
+        "description": "Destructive - confirms via OTP or password. Clears the user's bearer token server-side.",
         "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
         "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DeleteUserRequest"
-              }
-            }
-          }
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeleteUserRequest" } } }
         },
         "responses": {
-          "200": {
-            "description": "User deleted successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SuccessMessage"
-                }
-              }
-            }
-          }
+          "200": { "description": "Deleted." },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
         }
       }
     },
-    "/auth/logout": {
+    "/api/v1/auth/logout": {
       "post": {
         "tags": ["Auth"],
-        "summary": "Log out a user",
-        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "summary": "Client-side logout (clears wrapper's bearer cache)",
+        "description": "Local-only: tells the wrapper's SDK instance to drop its bearer token. Does NOT invalidate the token server-side. Discard the token on the client too.",
         "responses": {
-          "200": {
-            "description": "Logout successful",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SuccessMessage"
-                }
-              }
-            }
-          }
+          "200": { "description": "OK" }
         }
       }
     },
-    "/auth/otp/send": {
+    "/api/v1/auth/recovery/create": {
       "post": {
-        "tags": ["Auth"],
-        "summary": "Send OTP code",
-        "security": [{ "ApiKeyAuth": [] }],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SendOtpRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "OTP sent successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SuccessMessage"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/auth/otp/verify": {
-      "post": {
-        "tags": ["Auth"],
-        "summary": "Verify OTP code",
-        "security": [{ "ApiKeyAuth": [] }],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/VerifyOtpRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "OTP verified successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SuccessMessage"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/auth/recovery/create": {
-      "post": {
-        "tags": ["Auth"],
-        "summary": "Create recovery methods for a user",
+        "tags": ["Recovery"],
+        "summary": "Set up account recovery methods",
+        "description": "Adds email and/or phone as recovery channels for an externalId+password account.",
         "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
         "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateRecoveryRequest"
-              }
-            }
-          }
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateRecoveryRequest" } } }
         },
         "responses": {
-          "201": {
-            "description": "Recovery methods created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SuccessMessage"
-                }
-              }
+          "201": { "description": "Created", "content": { "application/json": { "schema": {
+            "type": "object",
+            "properties": {
+              "message": { "type": "string" },
+              "recovery": { "$ref": "#/components/schemas/RecoveryData" }
             }
-          }
+          } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" }
         }
       }
     },
-    "/auth/recovery/options/{externalId}": {
+    "/api/v1/auth/recovery/options/{externalId}": {
       "get": {
-        "tags": ["Auth"],
-        "summary": "Get recovery options for a user",
-        "security": [{ "ApiKeyAuth": [] }],
-        "parameters": [
-          {
-            "name": "externalId",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string" }
-          }
-        ],
+        "tags": ["Recovery"],
+        "summary": "Get available recovery options (masked)",
+        "description": "Public - for users who can't log in. Returns masked email/phone so the caller can let the user pick a delivery channel.",
+        "parameters": [{
+          "name": "externalId", "in": "path", "required": true,
+          "schema": { "type": "string" }
+        }],
         "responses": {
-          "200": { "description": "Recovery options" }
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RecoveryOptionsResponse" } } } }
         }
       }
     },
-    "/auth/recovery/request-reset": {
+    "/api/v1/auth/recovery/request-reset": {
       "post": {
-        "tags": ["Auth"],
-        "summary": "Request a password reset",
-        "security": [{ "ApiKeyAuth": [] }],
+        "tags": ["Recovery"],
+        "summary": "Request a password reset OTP",
+        "description": "Sends an OTP to the chosen recovery channel. No session required.",
         "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RequestPasswordResetRequest"
-              }
-            }
-          }
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RequestPasswordResetRequest" } } }
         },
         "responses": {
-          "200": {
-            "description": "Password reset request sent",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SuccessMessage"
-                }
-              }
+          "200": { "description": "OK", "content": { "application/json": { "schema": {
+            "type": "object",
+            "properties": {
+              "message": { "type": "string" },
+              "target": { "type": "string", "description": "Recovery destination that received the OTP." }
             }
-          }
+          } } } }
         }
       }
     },
-    "/auth/recovery/reset-password": {
+    "/api/v1/auth/recovery/reset-password": {
       "post": {
-        "tags": ["Auth"],
-        "summary": "Reset user password",
-        "security": [{ "ApiKeyAuth": [] }],
+        "tags": ["Recovery"],
+        "summary": "Complete password reset",
         "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ResetPasswordRequest"
-              }
-            }
-          }
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ResetPasswordRequest" } } }
         },
         "responses": {
-          "200": {
-            "description": "Password reset successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SuccessMessage"
-                }
-              }
-            }
-          }
+          "200": { "description": "OK" },
+          "400": { "$ref": "#/components/responses/BadRequest" }
         }
       }
     },
-    "/auth/recovery/update": {
+    "/api/v1/auth/recovery/update": {
       "put": {
-        "tags": ["Auth"],
-        "summary": "Update recovery methods",
+        "tags": ["Recovery"],
+        "summary": "Update existing recovery methods",
         "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
         "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateRecoveryRequest"
-              }
-            }
-          }
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateRecoveryRequest" } } }
         },
-        "responses": {
-          "200": {
-            "description": "Recovery methods updated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SuccessMessage"
-                }
-              }
-            }
-          }
-        }
+        "responses": { "200": { "description": "OK" }, "400": { "$ref": "#/components/responses/BadRequest" } }
       }
     },
-    "/auth/recovery/add-method": {
+    "/api/v1/auth/recovery/add-method": {
       "post": {
-        "tags": ["Auth"],
-        "summary": "Add a recovery method",
+        "tags": ["Recovery"],
+        "summary": "Add a single recovery method",
         "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
         "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AddRecoveryMethodRequest"
-              }
-            }
-          }
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AddRecoveryMethodRequest" } } }
         },
-        "responses": {
-          "200": {
-            "description": "Recovery method added",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SuccessMessage"
-                }
-              }
-            }
-          }
-        }
+        "responses": { "200": { "description": "OK" }, "400": { "$ref": "#/components/responses/BadRequest" } }
       }
     },
-    "/auth/recovery/remove-method": {
+    "/api/v1/auth/recovery/remove-method": {
       "delete": {
-        "tags": ["Auth"],
+        "tags": ["Recovery"],
         "summary": "Remove a recovery method",
         "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
         "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RemoveRecoveryMethodRequest"
-              }
+          "required": true,
+          "content": { "application/json": { "schema": {
+            "type": "object",
+            "required": ["externalId", "password", "method"],
+            "properties": {
+              "externalId": { "type": "string" },
+              "password": { "type": "string" },
+              "method": { "type": "string", "enum": ["emailRecovery", "phoneRecovery"] }
             }
-          }
+          } } }
         },
-        "responses": {
-          "200": {
-            "description": "Recovery method removed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SuccessMessage"
-                }
-              }
-            }
-          }
-        }
+        "responses": { "200": { "description": "OK" } }
       }
     },
-    "/auth/recovery/update-method": {
+    "/api/v1/auth/recovery/update-method": {
       "put": {
-        "tags": ["Auth"],
-        "summary": "Update a recovery method",
+        "tags": ["Recovery"],
+        "summary": "Update the value of an existing recovery method",
         "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
         "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateRecoveryMethodRequest"
-              }
-            }
-          }
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AddRecoveryMethodRequest" } } }
         },
-        "responses": {
-          "200": {
-            "description": "Recovery method updated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SuccessMessage"
-                }
-              }
-            }
-          }
-        }
+        "responses": { "200": { "description": "OK" } }
       }
     },
-    "/auth/recovery/my-methods": {
+    "/api/v1/auth/recovery/my-methods": {
       "post": {
-        "tags": ["Auth"],
-        "summary": "Get my recovery methods",
+        "tags": ["Recovery"],
+        "summary": "List the authenticated user's recovery methods",
         "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
         "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/GetMyRecoveryMethodsRequest"
-              }
+          "required": true,
+          "content": { "application/json": { "schema": {
+            "type": "object",
+            "required": ["externalId", "password"],
+            "properties": {
+              "externalId": { "type": "string" },
+              "password": { "type": "string" }
             }
-          }
+          } } }
         },
         "responses": {
-          "200": { "description": "List of recovery methods" }
+          "200": { "description": "OK", "content": { "application/json": { "schema": {
+            "type": "object",
+            "properties": { "recovery": { "$ref": "#/components/schemas/RecoveryData" } }
+          } } } }
         }
       }
     },
-    "/auth/recovery/delete-all": {
+    "/api/v1/auth/recovery/delete-all": {
       "delete": {
-        "tags": ["Auth"],
+        "tags": ["Recovery"],
         "summary": "Delete all recovery methods",
         "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
         "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DeleteAllRecoveryMethodsRequest"
-              }
+          "required": true,
+          "content": { "application/json": { "schema": {
+            "type": "object",
+            "required": ["externalId", "password"],
+            "properties": {
+              "externalId": { "type": "string" },
+              "password": { "type": "string" }
             }
-          }
+          } } }
         },
-        "responses": {
-          "200": {
-            "description": "All recovery methods deleted",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SuccessMessage"
-                }
-              }
-            }
-          }
-        }
+        "responses": { "200": { "description": "OK" } }
       }
     },
-    "/merchant/invoices": {
-      "post": {
-        "tags": ["Merchant"],
-        "summary": "Create an invoice",
-        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/CreateInvoiceRequest" }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Invoice created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CreateInvoiceResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "get": {
-        "tags": ["Merchant"],
-        "summary": "Get all invoices for the user",
-        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
-        "parameters": [
-          {
-            "name": "status",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "enum": ["PENDING", "COMPLETED", "EXPIRED"]
-            }
-          },
-          {
-            "name": "sortBy",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "enum": ["createdAt", "updatedAt", "paidAt"]
-            }
-          },
-          {
-            "name": "sortOrder",
-            "in": "query",
-            "schema": { "type": "string", "enum": ["asc", "desc"] }
-          },
-          {
-            "name": "startDate",
-            "in": "query",
-            "schema": { "type": "string", "format": "date-time" }
-          },
-          {
-            "name": "endDate",
-            "in": "query",
-            "schema": { "type": "string", "format": "date-time" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "List of invoices",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/GetInvoicesResponse" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/merchant/status": {
-      "get": {
-        "tags": ["Merchant"],
-        "summary": "Get merchant KYB status",
-        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
-        "parameters": [
-          {
-            "name": "user",
-            "in": "query",
-            "schema": { "type": "string" },
-            "description": "Optional: specific user ID to check"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Merchant status",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GetMerchantStatusResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/wallet/token-balance": {
+    "/api/v1/wallet/token-balance": {
       "get": {
         "tags": ["Wallet"],
-        "summary": "Get token balance for a specific token",
+        "summary": "Get balance of a specific token (optionally filtered by chain)",
         "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
         "parameters": [
-          {
-            "name": "token",
-            "in": "query",
-            "required": true,
-            "schema": { "type": "string" }
-          },
-          { "name": "chain", "in": "query", "schema": { "type": "string" } }
+          { "name": "token", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/TokenSymbol" } },
+          { "name": "chain", "in": "query", "schema": { "$ref": "#/components/schemas/ChainName" } }
         ],
         "responses": {
-          "200": {
-            "description": "Token balance",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponseBalanceArray"
-                }
-              }
+          "200": { "description": "OK", "content": { "application/json": { "schema": {
+            "type": "object",
+            "properties": {
+              "success": { "type": "boolean" },
+              "data": { "type": "array", "items": { "$ref": "#/components/schemas/Balance" } }
             }
-          }
+          } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
         }
       }
     },
-    "/wallet/chain-balance": {
+    "/api/v1/wallet/chain-balance": {
       "get": {
         "tags": ["Wallet"],
-        "summary": "Get all token balances for a chain",
+        "summary": "Get all token balances on a chain (or across all chains)",
         "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
         "parameters": [
-          { "name": "chain", "in": "query", "schema": { "type": "string" } }
+          { "name": "chain", "in": "query", "schema": { "$ref": "#/components/schemas/ChainName" } }
         ],
         "responses": {
-          "200": {
-            "description": "Chain balances",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponseBalanceArray"
-                }
-              }
+          "200": { "description": "OK", "content": { "application/json": { "schema": {
+            "type": "object",
+            "properties": {
+              "success": { "type": "boolean" },
+              "data": { "type": "array", "items": { "$ref": "#/components/schemas/Balance" } }
             }
-          }
+          } } } }
         }
       }
     },
-    "/offramp/preview_exchange_rate": {
+    "/api/v1/transaction/send": {
       "post": {
-        "tags": ["Off-ramp"],
-        "summary": "Preview exchange rate for an off-ramp transaction",
+        "tags": ["Transactions"],
+        "summary": "Send crypto",
+        "description": "Real transaction - always confirm with the user first. Requires re-auth (OTP or password) in the body in addition to the bearer token.",
         "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
         "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PreviewExchangeRateRequest"
-              }
-            }
-          }
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TransactionRequest" } } }
         },
         "responses": {
-          "200": { "description": "Exchange rate preview" }
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TransactionResponse" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
         }
       }
     },
-    "/offramp/payment_methods/{currency}": {
+    "/api/v1/transaction/history": {
       "get": {
-        "tags": ["Off-ramp"],
-        "summary": "Get supported payment institutions for a currency",
-        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
-        "parameters": [
-          {
-            "name": "currency",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string" }
-          }
-        ],
-        "responses": {
-          "200": { "description": "List of supported institutions" }
-        }
-      }
-    },
-    "/offramp/send-payment-link": {
-      "post": {
-        "tags": ["Off-ramp"],
-        "summary": "Send a payment link for off-ramping",
-        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SendPaymentLinkRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Payment link sent",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SuccessMessage"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/offramp/pay": {
-      "post": {
-        "tags": ["Off-ramp"],
-        "summary": "Initiate an off-ramp payment",
-        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PayRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": { "description": "Payment initiated" }
-        }
-      }
-    },
-    "/offramp": {
-      "post": {
-        "tags": ["Off-ramp"],
-        "summary": "Create an off-ramp order",
-        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateOfframpOrderRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": { "description": "Off-ramp order created" }
-        }
-      }
-    },
-    "/offramp/get-withdrawal-fee": {
-      "post": {
-        "tags": ["Off-ramp"],
-        "summary": "Get withdrawal fee for an off-ramp transaction",
-        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/GetWithdrawalFeeRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": { "description": "Withdrawal fee" }
-        }
-      }
-    },
-    "/offramp/poll_order_status": {
-      "get": {
-        "tags": ["Off-ramp"],
-        "summary": "Poll the status of an off-ramp order",
-        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
-        "parameters": [
-          {
-            "name": "transactionCode",
-            "in": "query",
-            "required": true,
-            "schema": { "type": "string" }
-          },
-          {
-            "name": "currency",
-            "in": "query",
-            "required": true,
-            "schema": { "type": "string", "enum": ["NGN", "KES"] }
-          }
-        ],
-        "responses": {
-          "200": { "description": "Order status" }
-        }
-      }
-    },
-    "/offramp/get_orders": {
-      "get": {
-        "tags": ["Off-ramp"],
-        "summary": "Get all off-ramp orders for the user",
-        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
-        "responses": {
-          "200": { "description": "List of off-ramp orders" }
-        }
-      }
-    },
-    "/onramp": {
-      "post": {
-        "tags": ["On-ramp"],
-        "summary": "Initiate a buy order",
-        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/BuyRequest" }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Buy order initiated",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/BuyResponse" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/onramp/status": {
-      "post": {
-        "tags": ["On-ramp"],
-        "summary": "Get status of an on-ramp transaction",
-        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": { "transactionCode": { "type": "string" } }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "On-ramp status",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OnrampStatusResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/onramp/orders/{userId}": {
-      "get": {
-        "tags": ["On-ramp"],
-        "summary": "Get all on-ramp orders for a user",
-        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
-        "parameters": [
-          {
-            "name": "userId",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string" }
-          }
-        ],
-        "responses": {
-          "200": { "description": "List of on-ramp orders" }
-        }
-      }
-    },
-    "/transaction/send": {
-      "post": {
-        "tags": ["Transaction"],
-        "summary": "Send a transaction",
-        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TransactionRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": { "description": "Transaction sent" }
-        }
-      }
-    },
-    "/transaction/history": {
-      "get": {
-        "tags": ["Transaction"],
+        "tags": ["Transactions"],
         "summary": "Get transaction history",
         "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
         "parameters": [
-          {
-            "name": "limit",
-            "in": "query",
-            "schema": { "type": "integer" }
-          },
-          {
-            "name": "page",
-            "in": "query",
-            "schema": { "type": "integer" }
-          },
-          {
-            "name": "token",
-            "in": "query",
-            "schema": { "type": "string" }
-          },
-          {
-            "name": "chain",
-            "in": "query",
-            "schema": { "type": "string" }
-          }
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 10 } },
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "token", "in": "query", "schema": { "type": "string" } },
+          { "name": "chain", "in": "query", "schema": { "type": "string" } }
         ],
         "responses": {
-          "200": { "description": "Transaction history" }
+          "200": { "description": "OK", "content": { "application/json": { "schema": {
+            "type": "object",
+            "properties": {
+              "transactions": { "type": "array", "items": { "$ref": "#/components/schemas/Transaction" } }
+            }
+          } } } }
         }
       }
     },
-    "/transaction/fee": {
+    "/api/v1/transaction/fee": {
       "get": {
-        "tags": ["Transaction"],
-        "summary": "Get transaction fee",
+        "tags": ["Transactions"],
+        "summary": "Calculate transaction fee",
         "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
         "parameters": [
-          {
-            "name": "recipient",
-            "in": "query",
-            "required": true,
-            "schema": { "type": "string" }
-          },
-          {
-            "name": "amount",
-            "in": "query",
-            "required": true,
-            "schema": { "type": "string" }
-          },
-          {
-            "name": "chain",
-            "in": "query",
-            "required": true,
-            "schema": { "type": "string" }
-          },
-          {
-            "name": "token",
-            "in": "query",
-            "required": true,
-            "schema": { "type": "string" }
-          }
+          { "name": "recipient", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "amount", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "chain", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "token", "in": "query", "required": true, "schema": { "type": "string" } }
         ],
         "responses": {
-          "200": { "description": "Transaction fee" }
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TransactionFeeResponse" } } } }
         }
       }
     },
-    "/notifications/register": {
+    "/api/v1/signer/get-wallet-instance": {
       "post": {
-        "tags": ["Notification"],
-        "summary": "Register for push notifications",
+        "tags": ["Signer"],
+        "summary": "Get wallet instance info for a chain",
         "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
         "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/NotificationSubscriptionRequest"
-              }
-            }
-          }
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GetWalletInstanceRequest" } } }
         },
         "responses": {
-          "200": {
-            "description": "Subscription created",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/SuccessMessage" }
-              }
-            }
-          }
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WalletInstanceResponse" } } } }
         }
       }
     },
-    "/notifications/unsubscribe": {
+    "/api/v1/signer/sign-transaction": {
       "post": {
-        "tags": ["Notification"],
-        "summary": "Unsubscribe from push notifications",
+        "tags": ["Signer"],
+        "summary": "Sign a transaction without broadcasting it",
         "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
         "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UnsubscribeRequest"
-              }
-            }
-          }
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SignTransactionRequest" } } }
         },
         "responses": {
-          "200": {
-            "description": "Unsubscribed successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SuccessMessage"
-                }
-              }
-            }
-          }
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SignTransactionResponse" } } } }
         }
       }
     },
-    "/notifications/subscriptions": {
+    "/api/v1/signer/send-transaction": {
+      "post": {
+        "tags": ["Signer"],
+        "summary": "Execute a call via the user's smart wallet as an ERC-4337 UserOperation",
+        "description": "On-chain sender is the SMART WALLET, signed by the EOA owner. Returns a UserOperation hash - NOT a classic tx hash. Do not link as `etherscan.io/tx/<hash>`; use a bundler-aware explorer (jiffyscan.xyz). Gas is sponsored by default; pass `paymasterToken` (ERC-20) to pay in a token.",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SendTransactionRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SendTransactionResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/signer/sign-message": {
+      "post": {
+        "tags": ["Signer"],
+        "summary": "Sign an arbitrary message (off-chain auth, DApp signatures, etc.)",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SignMessageRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SignMessageResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/assets/tokens": {
       "get": {
-        "tags": ["Notification"],
-        "summary": "Get user notification subscriptions",
+        "tags": ["Assets"],
+        "summary": "List all supported tokens",
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AssetsListResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/assets/tokens/chain/{chainId}": {
+      "get": {
+        "tags": ["Assets"],
+        "summary": "List supported tokens on a specific chain",
+        "parameters": [{ "$ref": "#/components/parameters/ChainPathParam" }],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AssetsListResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/assets/tokens/user": {
+      "get": {
+        "tags": ["Assets"],
+        "summary": "List tokens the authenticated user holds",
         "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
         "responses": {
-          "200": { "description": "List of subscriptions" }
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AssetsListResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/assets/tokens/{tokenId}": {
+      "get": {
+        "tags": ["Assets"],
+        "summary": "Get token details by composite id",
+        "parameters": [{ "$ref": "#/components/parameters/TokenIdPathParam" }],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": {
+            "type": "object",
+            "properties": {
+              "message": { "type": "string" },
+              "data": { "$ref": "#/components/schemas/WalletToken" }
+            }
+          } } } }
+        }
+      }
+    },
+    "/api/v1/assets/chains/{chainId}": {
+      "get": {
+        "tags": ["Assets"],
+        "summary": "Get chain details by id",
+        "parameters": [{ "$ref": "#/components/parameters/ChainPathParam" }],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": {
+            "type": "object",
+            "properties": {
+              "message": { "type": "string" },
+              "data": { "$ref": "#/components/schemas/WalletChain" }
+            }
+          } } } }
+        }
+      }
+    },
+    "/api/v1/assets/supported-chains": {
+      "get": {
+        "tags": ["Assets"],
+        "summary": "List supported chains",
+        "description": "When `?active=true`, returns only chains where the authenticated user has active balances (bearer required). Without it, returns the Rift catalogue (public).",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "parameters": [
+          { "name": "active", "in": "query", "schema": { "type": "boolean" }, "description": "Set to true to filter to chains with active user balances." }
+        ],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ChainsListResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/bridge/routes": {
+      "get": {
+        "tags": ["Bridge"],
+        "summary": "Get available bridge routes and supported tokens",
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BridgeRoutesResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/bridge/quote": {
+      "post": {
+        "tags": ["Bridge"],
+        "summary": "Get a quote for a bridge transfer",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BridgeQuoteRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BridgeQuoteResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/bridge/execute": {
+      "post": {
+        "tags": ["Bridge"],
+        "summary": "Execute a cross-chain bridge transfer",
+        "description": "Tokens arrive in 1-5 minutes. No OTP needed for bridge.",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BridgeExecuteRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BridgeExecuteResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/defi/swap": {
+      "post": {
+        "tags": ["DeFi"],
+        "summary": "Swap one token for another on a single chain",
+        "description": "Same-chain only - use `/bridge/execute` for cross-chain. No OTP required.",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SwapRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SwapResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/offramp/preview_exchange_rate": {
+      "post": {
+        "tags": ["Offramp"],
+        "summary": "Preview exchange rate (and optional fee breakdown)",
+        "description": "Pass `type: 'offramp'` for cashing out, `'onramp'` for buying. Always pair with an `amount` to get a meaningful feeBreakdown.",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PreviewExchangeRateRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PreviewExchangeRateResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/offramp/payment_methods/{currency}": {
+      "get": {
+        "tags": ["Offramp"],
+        "summary": "Get supported institutions for a currency",
+        "description": "Returns banks, mobile-money networks, and the bankCode/institution strings used in `/offramp/pay` recipient JSON.",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/CurrencyPathParam" }],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GetSupportedInstitutionsResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/offramp/send-payment-link": {
+      "post": {
+        "tags": ["Offramp"],
+        "summary": "Email/SMS an existing payment link to recipient(s)",
+        "description": "Does NOT create a payment - delivers an existing URL. At least one of `recipientEmail` or `recipientPhone` is required.",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": {
+            "type": "object",
+            "required": ["paymentLink", "message"],
+            "properties": {
+              "paymentLink": { "type": "string", "format": "uri" },
+              "message": { "type": "string" },
+              "recipientEmail": { "type": "string", "format": "email" },
+              "recipientPhone": { "type": "string" }
+            }
+          } } }
+        },
+        "responses": {
+          "200": { "description": "OK" }
+        }
+      }
+    },
+    "/api/v1/offramp/pay": {
+      "post": {
+        "tags": ["Offramp"],
+        "summary": "Execute an offramp (crypto -> fiat) payment",
+        "description": "Real payment - confirm with user. Long-running: can take 30-60+ seconds (on-chain tx + fiat settlement). A timeout does NOT mean failure - poll `/offramp/poll_order_status` with the returned `transactionCode`.\n\nRecipient JSON shapes per currency (stringify the object and put in `recipient`):\n- **KES (M-Pesa)**: `{\"type\":\"MOBILE\",\"accountIdentifier\":\"+254...\",\"institution\":\"Safaricom\"}`\n- **KES (Paybill)**: `{\"type\":\"PAYBILL\",\"accountIdentifier\":\"shortcode\",\"accountNumber\":\"acct\",\"institution\":\"Safaricom\"}`\n- **NGN (bank)**: `{\"bankCode\":\"GTBINGLA\",\"accountIdentifier\":\"0123456789\",\"accountName\":\"Name\",\"institution\":\"GTBank\"}`\n- **UGX (mobile)**: `{\"bankCode\":\"MOMOUGPC\",\"accountIdentifier\":\"+256...\",\"accountName\":\"Name\",\"institution\":\"MTN\"}`\n- **GHS (mobile)**: `{\"bankCode\":\"MOMOGHPC\",\"accountIdentifier\":\"+233...\",\"accountName\":\"Name\",\"institution\":\"MTN\"}`\n- **ETB (mobile)**: `{\"bankCode\":\"TELEBPC\",\"accountIdentifier\":\"+251...\",\"accountName\":\"Name\",\"institution\":\"Telebirr\"}`\n- **TZS (mobile)**: `{\"bankCode\":\"TIGOTZPC\",\"accountIdentifier\":\"+255...\",\"accountName\":\"Name\",\"institution\":\"Vodacom\"}`\n- **BRL (PIX)**: `{\"bankCode\":\"PIXKBRPC\",\"accountIdentifier\":\"pix_key\",\"accountName\":\"Name\",\"institution\":\"pix\"}`",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PayRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": {
+            "type": "object",
+            "properties": { "order": { "$ref": "#/components/schemas/OfframpOrder" } }
+          } } } }
+        }
+      }
+    },
+    "/api/v1/offramp/": {
+      "post": {
+        "tags": ["Offramp"],
+        "summary": "Create an offramp order (legacy - prefer /offramp/pay)",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PayRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": {
+            "type": "object",
+            "properties": { "order": { "$ref": "#/components/schemas/OfframpOrder" } }
+          } } } }
+        }
+      }
+    },
+    "/api/v1/offramp/get-withdrawal-fee": {
+      "post": {
+        "tags": ["Offramp"],
+        "summary": "Get the raw KES buy/sell spread (diagnostic only)",
+        "description": "Do NOT use to show users their withdrawal fee. Use `/offramp/preview_exchange_rate` with an amount and `type: 'offramp'` instead - that returns the real fee in `feeBreakdown`.",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": {
+            "type": "object",
+            "required": ["amount"],
+            "properties": { "amount": { "type": "number" } }
+          } } }
+        },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": {
+            "type": "object",
+            "properties": { "fee": { "type": "number" } }
+          } } } }
+        }
+      }
+    },
+    "/api/v1/offramp/poll_order_status": {
+      "get": {
+        "tags": ["Offramp"],
+        "summary": "Poll the status of an offramp order",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "parameters": [
+          { "name": "transactionCode", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "currency", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/OfframpCurrency" } }
+        ],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": {
+            "type": "object",
+            "properties": {
+              "status": { "type": "string" },
+              "transactionCode": { "type": "string" },
+              "receipt_number": { "type": "string", "nullable": true }
+            }
+          } } } }
+        }
+      }
+    },
+    "/api/v1/offramp/get_orders": {
+      "get": {
+        "tags": ["Offramp"],
+        "summary": "List all offramp orders for the user",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": {
+            "type": "object",
+            "properties": { "orders": { "type": "array", "items": { "$ref": "#/components/schemas/OfframpOrder" } } }
+          } } } }
+        }
+      }
+    },
+    "/api/v1/onramp/": {
+      "post": {
+        "tags": ["Onramp"],
+        "summary": "Buy crypto with mobile money / bank transfer",
+        "description": "Pretium for KES; Paycrest for the rest. The `amount` is in LOCAL FIAT, not USDC. No OTP required.",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BuyRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BuyResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/onramp/status": {
+      "post": {
+        "tags": ["Onramp"],
+        "summary": "Get the status of a crypto purchase",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": {
+            "type": "object",
+            "required": ["transactionCode"],
+            "properties": { "transactionCode": { "type": "string" } }
+          } } }
+        },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OnrampStatusResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/onramp/orders/{userId}": {
+      "get": {
+        "tags": ["Onramp"],
+        "summary": "Get onramp purchase history for a user",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "parameters": [
+          { "name": "userId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/OnrampStatusResponse" }
+          } } } }
+        }
+      }
+    },
+    "/api/v1/kyc/token": {
+      "post": {
+        "tags": ["KYC"],
+        "summary": "Generate a KYC verification token / URL",
+        "description": "Returns a SmileID or Sumsub verification URL the user must visit. Public - no bearer required.",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KYCTokenRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KYCTokenResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/kyc/user-exists": {
+      "post": {
+        "tags": ["KYC"],
+        "summary": "Check if a user exists and their KYC status",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": {
+            "type": "object",
+            "properties": {
+              "email": { "type": "string", "format": "email" },
+              "phoneNumber": { "type": "string" },
+              "externalId": { "type": "string" }
+            }
+          } } }
+        },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KYCUserExistsResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/kyc/status": {
+      "post": {
+        "tags": ["KYC"],
+        "summary": "Check KYC verification status",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": {
+            "type": "object",
+            "properties": {
+              "email": { "type": "string", "format": "email" },
+              "phoneNumber": { "type": "string" },
+              "externalId": { "type": "string" }
+            }
+          } } }
+        },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KYCStatusResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/kyc/verify-and-send-otp": {
+      "post": {
+        "tags": ["KYC"],
+        "summary": "Poll KYC status and send OTP once verified",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": {
+            "type": "object",
+            "required": ["identifier"],
+            "properties": {
+              "identifier": { "type": "string", "description": "Email, phone, or externalId." },
+              "maxWaitTime": { "type": "number", "description": "Max poll time in ms." }
+            }
+          } } }
+        },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KYCStatusResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/kyc/verify": {
+      "post": {
+        "tags": ["KYC"],
+        "summary": "Server-to-server KYC verification check by jobId",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": {
+            "type": "object",
+            "required": ["jobId"],
+            "properties": { "jobId": { "type": "string" } }
+          } } }
+        },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": {
+            "type": "object",
+            "properties": {
+              "success": { "type": "boolean" },
+              "kycVerified": { "type": "boolean" },
+              "message": { "type": "string" }
+            }
+          } } } }
+        }
+      }
+    },
+    "/api/v1/kyc/verified": {
+      "get": {
+        "tags": ["KYC"],
+        "summary": "Is the authenticated user KYC-verified?",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": {
+            "type": "object",
+            "properties": {
+              "success": { "type": "boolean" },
+              "kycVerified": { "type": "boolean" }
+            }
+          } } } }
+        }
+      }
+    },
+    "/api/v1/kyc/job/{jobId}": {
+      "get": {
+        "tags": ["KYC"],
+        "summary": "Poll a specific KYC job's status",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "parameters": [{ "name": "jobId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KYCJobStatusResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/merchant/invoices": {
+      "post": {
+        "tags": ["Merchant"],
+        "summary": "Create an invoice and get a payment URL",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateInvoiceRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": {
+            "type": "object",
+            "properties": { "invoice": { "$ref": "#/components/schemas/Invoice" } }
+          } } } }
         }
       },
+      "get": {
+        "tags": ["Merchant"],
+        "summary": "List invoices",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "parameters": [
+          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["PENDING", "COMPLETED", "EXPIRED"] } },
+          { "name": "sortBy", "in": "query", "schema": { "type": "string", "enum": ["createdAt", "updatedAt", "paidAt"] } },
+          { "name": "sortOrder", "in": "query", "schema": { "type": "string", "enum": ["asc", "desc"] } },
+          { "name": "startDate", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "endDate", "in": "query", "schema": { "type": "string", "format": "date" } }
+        ],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": {
+            "type": "object",
+            "properties": { "invoices": { "type": "array", "items": { "$ref": "#/components/schemas/Invoice" } } }
+          } } } }
+        }
+      }
+    },
+    "/api/v1/merchant/status": {
+      "get": {
+        "tags": ["Merchant"],
+        "summary": "Check merchant KYB approval status",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "parameters": [
+          { "name": "user", "in": "query", "schema": { "type": "string" }, "description": "Optional - check a specific user instead of the authenticated user." }
+        ],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GetMerchantStatusResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/notifications/register": {
+      "post": {
+        "tags": ["Notifications"],
+        "summary": "Register a device for push notifications",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/NotificationSubscriptionRequest" } } }
+        },
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/api/v1/notifications/unsubscribe": {
+      "post": {
+        "tags": ["Notifications"],
+        "summary": "Unsubscribe a device",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": {
+            "type": "object",
+            "required": ["subscriberId"],
+            "properties": { "subscriberId": { "type": "string" } }
+          } } }
+        },
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/api/v1/notifications/subscriptions": {
+      "get": {
+        "tags": ["Notifications"],
+        "summary": "List the user's notification subscriptions",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "responses": { "200": { "description": "OK" } }
+      },
       "delete": {
-        "tags": ["Notification"],
-        "summary": "Delete all notification subscriptions for the user",
+        "tags": ["Notifications"],
+        "summary": "Delete ALL notification subscriptions for the user",
         "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
-        "responses": {
-          "200": {
-            "description": "All subscriptions deleted",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SuccessMessage"
-                }
-              }
-            }
-          }
-        }
+        "responses": { "200": { "description": "OK" } }
       }
     },
-    "/notifications/test": {
+    "/api/v1/notifications/test": {
       "post": {
-        "tags": ["Notification"],
-        "summary": "Send a test notification",
-        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/NotificationTestRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Test notification sent",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SuccessMessage"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/notifications/send": {
-      "post": {
-        "tags": ["Notification"],
-        "summary": "Send notification to all user subscribers",
-        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/NotificationSendRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Notifications sent",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SuccessMessage"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/signer/get-wallet-instance": {
-      "post": {
-        "tags": ["Signer"],
-        "summary": "Get wallet instance for the user",
-        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/GetWalletInstanceRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": { "description": "Wallet instance" }
-        }
-      }
-    },
-    "/signer/sign-transaction": {
-      "post": {
-        "tags": ["Signer"],
-        "summary": "Sign a transaction",
-        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SignTransactionRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": { "description": "Signed transaction" }
-        }
-      }
-    },
-    "/signer/send-transaction": {
-      "post": {
-        "tags": ["Signer"],
-        "summary": "Send a signed transaction",
-        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SendTransactionRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": { "description": "Transaction sent" }
-        }
-      }
-    },
-    "/signer/sign-message": {
-      "post": {
-        "tags": ["Signer"],
-        "summary": "Sign a message",
-        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SignMessageRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": { "description": "Signed message" }
-        }
-      }
-    },
-    "/assets/tokens": {
-      "get": {
-        "tags": ["Assets"],
-        "summary": "Get a list of all supported tokens",
-        "security": [{ "ApiKeyAuth": [] }],
-        "responses": {
-          "200": { "description": "List of all tokens" }
-        }
-      }
-    },
-    "/assets/tokens/user": {
-      "get": {
-        "tags": ["Assets"],
-        "summary": "Get a list of tokens for the authenticated user",
-        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
-        "responses": {
-          "200": { "description": "List of user tokens" }
-        }
-      }
-    },
-    "/assets/tokens/chain/{chainId}": {
-      "get": {
-        "tags": ["Assets"],
-        "summary": "Get tokens for a specific chain",
-        "security": [{ "ApiKeyAuth": [] }],
-        "parameters": [
-          {
-            "name": "chainId",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string" }
-          }
-        ],
-        "responses": {
-          "200": { "description": "List of tokens for the chain" }
-        }
-      }
-    },
-    "/assets/tokens/{tokenId}": {
-      "get": {
-        "tags": ["Assets"],
-        "summary": "Get information for a specific token",
-        "security": [{ "ApiKeyAuth": [] }],
-        "parameters": [
-          {
-            "name": "tokenId",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string" }
-          }
-        ],
-        "responses": {
-          "200": { "description": "Token information" }
-        }
-      }
-    },
-    "/assets/chains/{chainId}": {
-      "get": {
-        "tags": ["Assets"],
-        "summary": "Get information for a specific chain",
-        "security": [{ "ApiKeyAuth": [] }],
-        "parameters": [
-          {
-            "name": "chainId",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string" }
-          }
-        ],
-        "responses": {
-          "200": { "description": "Chain information" }
-        }
-      }
-    },
-    "/assets/supported-chains": {
-      "get": {
-        "tags": ["Assets"],
-        "summary": "Get a list of supported chains",
-        "description": "Publicly accessible, but can also be called with authentication to get user-specific active chains by passing `active=true` query param.",
-        "security": [{ "ApiKeyAuth": [] }],
-        "parameters": [
-          {
-            "name": "active",
-            "in": "query",
-            "schema": { "type": "boolean" },
-            "description": "If true, returns chains active for the authenticated user."
-          }
-        ],
-        "responses": {
-          "200": { "description": "List of supported chains" }
-        }
-      }
-    },
-    "/payment-links/request-payment": {
-      "post": {
-        "tags": ["Payment Links"],
-        "summary": "Create a payment request",
-        "description": "Generate a payment request that others can pay. Returns a unique nonce for tracking.",
+        "tags": ["Notifications"],
+        "summary": "Send a test notification to one subscriber",
         "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
         "requestBody": {
           "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": ["amount", "chain", "token"],
-                "properties": {
-                  "amount": { "type": "number", "description": "Amount to request" },
-                  "chain": { "type": "string", "enum": ["ARBITRUM", "BASE", "OPTIMISM", "ETHEREUM", "LISK", "BNB", "BERACHAIN", "POLYGON", "AVAX", "BSC"] },
-                  "token": { "type": "string", "enum": ["USDC", "USDT", "DYU", "ETH", "BTC", "WBERA", "USDC.e", "LSK", "BNB", "MATIC", "SAIL"] }
-                }
-              }
-            }
-          }
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/NotificationTestRequest" } } }
         },
-        "responses": {
-          "201": { "description": "Payment request created successfully" },
-          "400": { "description": "Invalid request" }
-        }
+        "responses": { "200": { "description": "OK" } }
       }
     },
-    "/payment-links/execute": {
+    "/api/v1/notifications/send": {
       "post": {
-        "tags": ["Payment Links"],
-        "summary": "Execute a payment request",
-        "description": "Pay a payment request using its nonce",
-        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
-        "parameters": [
-          {
-            "name": "nonce",
-            "in": "query",
-            "required": true,
-            "schema": { "type": "string" },
-            "description": "Payment request nonce"
-          }
-        ],
-        "responses": {
-          "200": { "description": "Payment executed successfully" },
-          "400": { "description": "Invalid nonce or payment failed" }
-        }
-      }
-    },
-    "/payment-links/send-specific": {
-      "post": {
-        "tags": ["Payment Links"],
-        "summary": "Create a send link for a specific recipient",
-        "description": "Create a payment link that can only be claimed by a specific recipient (identified by username, email, or phone)",
+        "tags": ["Notifications"],
+        "summary": "Send a notification to ALL of the user's subscribers",
         "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
         "requestBody": {
           "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": ["time", "value", "token", "chain"],
-                "properties": {
-                  "time": { "type": "string", "description": "Expiration time (e.g., '1h', '30m', '2d')", "example": "24h" },
-                  "value": { "type": "string", "description": "Amount to send" },
-                  "token": { "type": "string" },
-                  "chain": { "type": "string" },
-                  "recipientUsername": { "type": "string" },
-                  "recipientPhoneNumber": { "type": "string" },
-                  "recipientEmail": { "type": "string" },
-                  "externalId": { "type": "string" },
-                  "password": { "type": "string" },
-                  "phoneNumber": { "type": "string" },
-                  "otpCode": { "type": "string" },
-                  "email": { "type": "string" }
-                }
-              }
-            }
-          }
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/NotificationSendRequest" } } }
         },
         "responses": {
-          "201": { "description": "Send link created successfully" },
-          "400": { "description": "Invalid request" }
-        }
-      }
-    },
-    "/payment-links/send-open": {
-      "post": {
-        "tags": ["Payment Links"],
-        "summary": "Create an open send link",
-        "description": "Create a payment link that anyone can claim (first come, first served)",
-        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": {
+            "type": "object",
+            "properties": {
+              "summary": {
                 "type": "object",
-                "required": ["time", "value", "token", "chain"],
                 "properties": {
-                  "time": { "type": "string", "description": "Expiration time", "example": "24h" },
-                  "value": { "type": "string" },
-                  "token": { "type": "string" },
-                  "chain": { "type": "string" }
+                  "sent": { "type": "number" },
+                  "failed": { "type": "number" },
+                  "total": { "type": "number" }
                 }
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": { "description": "Open send link created" },
-          "400": { "description": "Invalid request" }
-        }
-      }
-    },
-    "/payment-links/claim-specific": {
-      "post": {
-        "tags": ["Payment Links"],
-        "summary": "Claim a specific send link",
-        "description": "Claim a send link that was created for you specifically",
-        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": ["id"],
-                "properties": {
-                  "id": { "type": "string", "description": "Send link ID" }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": { "description": "Successfully claimed" },
-          "400": { "description": "Unable to claim" }
-        }
-      }
-    },
-    "/payment-links/claim-open": {
-      "post": {
-        "tags": ["Payment Links"],
-        "summary": "Claim an open send link",
-        "description": "Claim an open send link (first come, first served)",
-        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": ["id"],
-                "properties": {
-                  "id": { "type": "string", "description": "Send link ID" }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": { "description": "Successfully claimed" },
-          "400": { "description": "Unable to claim or already claimed" }
-        }
-      }
-    },
-    "/payment-links/list-payment-requests": {
-      "get": {
-        "tags": ["Payment Links"],
-        "summary": "List all payment requests",
-        "description": "Get all payment requests created by the authenticated user with optional filtering",
-        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
-        "parameters": [
-          {
-            "name": "expired",
-            "in": "query",
-            "schema": { "type": "string", "enum": ["true", "false"] },
-            "description": "Filter by expiration status"
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "schema": { "type": "string" },
-            "description": "Number of results per page"
-          },
-          {
-            "name": "page",
-            "in": "query",
-            "schema": { "type": "string" },
-            "description": "Page number"
-          }
-        ],
-        "responses": {
-          "200": { "description": "List of payment requests" }
-        }
-      }
-    },
-    "/payment-links/list-send-links": {
-      "get": {
-        "tags": ["Payment Links"],
-        "summary": "List all send links",
-        "description": "Get all send links created by the authenticated user",
-        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
-        "parameters": [
-          {
-            "name": "fulfilled",
-            "in": "query",
-            "schema": { "type": "string", "enum": ["true", "false"] },
-            "description": "Filter by fulfillment status"
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "schema": { "type": "string" }
-          },
-          {
-            "name": "page",
-            "in": "query",
-            "schema": { "type": "string" }
-          }
-        ],
-        "responses": {
-          "200": { "description": "List of send links" }
-        }
-      }
-    },
-    "/payment-links/cancel-payment-request/{nonce}": {
-      "delete": {
-        "tags": ["Payment Links"],
-        "summary": "Cancel a payment request",
-        "description": "Cancel an unpaid payment request",
-        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
-        "parameters": [
-          {
-            "name": "nonce",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string" }
-          }
-        ],
-        "responses": {
-          "200": { "description": "Payment request cancelled" },
-          "400": { "description": "Cannot cancel" }
-        }
-      }
-    },
-    "/payment-links/cancel-send-link/{urlId}": {
-      "delete": {
-        "tags": ["Payment Links"],
-        "summary": "Cancel a send link",
-        "description": "Cancel an unclaimed send link",
-        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
-        "parameters": [
-          {
-            "name": "urlId",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string" }
-          }
-        ],
-        "responses": {
-          "200": { "description": "Send link cancelled" },
-          "400": { "description": "Cannot cancel" }
-        }
-      }
-    },
-    "/payment-links/user/all": {
-      "get": {
-        "tags": ["Payment Links"],
-        "summary": "Get all users",
-        "description": "Get a list of all users in the system (admin function)",
-        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
-        "responses": {
-          "200": { "description": "List of all users" }
-        }
-      }
-    },
-    "/deposits": {
-      "get": {
-        "tags": ["Deposits"],
-        "summary": "Get all deposits",
-        "description": "Retrieve all Base USDC deposits for the authenticated user",
-        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
-        "responses": {
-          "200": {
-            "description": "List of deposits",
-            "content": {
-              "application/json": {
-                "schema": {
+              },
+              "details": {
+                "type": "array",
+                "items": {
                   "type": "object",
                   "properties": {
-                    "deposits": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "id": { "type": "string" },
-                          "userId": { "type": "string" },
-                          "transactionHash": { "type": "string" },
-                          "blockNumber": { "type": "string" },
-                          "blockTimestamp": { "type": "string" },
-                          "fromAddress": { "type": "string" },
-                          "toAddress": { "type": "string" },
-                          "amount": { "type": "string" },
-                          "rawAmount": { "type": "string" },
-                          "exchangeRate": { "type": "number" },
-                          "kesAmount": { "type": "number" },
-                          "processed": { "type": "boolean" },
-                          "createdAt": { "type": "string" },
-                          "updatedAt": { "type": "string" }
-                        }
-                      }
-                    }
+                    "subscriberId": { "type": "string" },
+                    "success": { "type": "boolean" },
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string" }
                   }
                 }
               }
             }
-          },
-          "400": { "description": "Error fetching deposits" }
+          } } } }
+        }
+      }
+    },
+    "/api/v1/walletconnect/pair": {
+      "post": {
+        "tags": ["WalletConnect"],
+        "summary": "Pair with a DApp via a wc: URI",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WalletConnectPairRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WalletConnectPairResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/walletconnect/requests": {
+      "get": {
+        "tags": ["WalletConnect"],
+        "summary": "List pending DApp requests",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/api/v1/walletconnect/requests/{id}/approve": {
+      "post": {
+        "tags": ["WalletConnect"],
+        "summary": "Approve a pending DApp request",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/api/v1/walletconnect/requests/{id}/reject": {
+      "post": {
+        "tags": ["WalletConnect"],
+        "summary": "Reject a pending DApp request",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/api/v1/walletconnect/sessions": {
+      "get": {
+        "tags": ["WalletConnect"],
+        "summary": "List active WalletConnect sessions",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/api/v1/walletconnect/sessions/{topic}": {
+      "delete": {
+        "tags": ["WalletConnect"],
+        "summary": "Disconnect a WalletConnect session",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "parameters": [{ "name": "topic", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/api/v1/deposits/": {
+      "get": {
+        "tags": ["Deposits"],
+        "summary": "Get on-chain USDC deposits seen by the indexer",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": {
+            "type": "object",
+            "properties": { "deposits": { "type": "array", "items": { "$ref": "#/components/schemas/Deposit" } } }
+          } } } }
+        }
+      }
+    },
+    "/api/v1/deposits/stats": {
+      "get": {
+        "tags": ["Deposits"],
+        "summary": "Get deposit aggregate stats",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": {
+            "type": "object",
+            "properties": {
+              "stats": {
+                "type": "object",
+                "properties": {
+                  "totalDeposits": { "type": "number" },
+                  "totalUsdcAmount": { "type": "string" },
+                  "totalKesAmount": { "type": "number" },
+                  "deposits": { "type": "array", "items": { "$ref": "#/components/schemas/Deposit" } }
+                }
+              }
+            }
+          } } } }
+        }
+      }
+    },
+    "/api/v1/users/suspend": {
+      "post": {
+        "tags": ["User Management"],
+        "summary": "Suspend a user",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuspendUserRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuspendUserResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/users/unsuspend": {
+      "post": {
+        "tags": ["User Management"],
+        "summary": "Unsuspend a user",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuspendUserRequest" } } }
+        },
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/api/v1/users/suspended": {
+      "get": {
+        "tags": ["User Management"],
+        "summary": "List suspended users",
+        "parameters": [
+          { "name": "projectOwnerPhone", "in": "query", "schema": { "type": "string" } },
+          { "name": "projectOwnerEmail", "in": "query", "schema": { "type": "string", "format": "email" } }
+        ],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": {
+            "type": "object",
+            "properties": {
+              "success": { "type": "boolean" },
+              "data": {
+                "type": "object",
+                "properties": {
+                  "suspendedUsers": { "type": "array", "items": { "type": "object" } },
+                  "totalCount": { "type": "number" }
+                }
+              }
+            }
+          } } } }
+        }
+      }
+    },
+    "/api/v1/users/status": {
+      "get": {
+        "tags": ["User Management"],
+        "summary": "Check whether a specific user is suspended",
+        "parameters": [
+          { "name": "phoneNumber", "in": "query", "schema": { "type": "string" } },
+          { "name": "email", "in": "query", "schema": { "type": "string", "format": "email" } },
+          { "name": "externalId", "in": "query", "schema": { "type": "string" } },
+          { "name": "userId", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": {
+            "type": "object",
+            "properties": {
+              "success": { "type": "boolean" },
+              "data": {
+                "type": "object",
+                "properties": {
+                  "userId": { "type": "string" },
+                  "email": { "type": "string", "nullable": true },
+                  "phoneNumber": { "type": "string", "nullable": true },
+                  "externalId": { "type": "string", "nullable": true },
+                  "isSuspended": { "type": "boolean" },
+                  "suspendedAt": { "type": "string", "format": "date-time", "nullable": true },
+                  "suspendedReason": { "type": "string", "nullable": true },
+                  "suspendedBy": { "type": "string", "nullable": true }
+                }
+              }
+            }
+          } } } }
         }
       }
     }

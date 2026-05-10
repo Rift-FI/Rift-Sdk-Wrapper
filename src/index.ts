@@ -14,6 +14,7 @@ import kycRouter from "./routes/kyc";
 import bridgeRouter from "./routes/bridge";
 import walletConnectRouter from "./routes/wallet-connect";
 import userManagementRouter from "./routes/user-management";
+import defiRouter from "./routes/defi";
 import swaggerUi from "swagger-ui-express";
 import * as swaggerDocument from "../docs.json";
 
@@ -42,6 +43,7 @@ app.use("/api/v1/kyc", kycRouter);
 app.use("/api/v1/bridge", bridgeRouter);
 app.use("/api/v1/walletconnect", walletConnectRouter);
 app.use("/api/v1/users", userManagementRouter);
+app.use("/api/v1/defi", defiRouter);
 
 // Swagger UI Endpoint
 app.use(

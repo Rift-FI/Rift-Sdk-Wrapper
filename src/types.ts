@@ -1522,35 +1522,31 @@ export interface RecoveryData {
   export interface SendTransactionRequest {
     chain: ChainName;
     transactionData: {
-      to?: string;
+      to: string;
       value?: string;
       data?: string;
-      gasLimit?: string;
-      gasPrice?: string;
-      maxFeePerGas?: string;
-      maxPriorityFeePerGas?: string;
-      nonce?: number;
-      type?: number;
-      chainId?: number;
       [key: string]: any;
     };
+    paymasterToken?: string;
     [key: string]: any;
   }
-  
+
+  // Response shape reflects the smart-wallet / UserOperation execution model:
+  // `hash` is the primary tracking hash (UserOp hash for gasless flows, tx
+  // hash for normal flows); `userOperationHash` and `transactionHash` are
+  // populated when the SDK can disambiguate. `owner` is the EOA that signed.
   export interface SendTransactionResponse {
+    success: boolean;
     hash: string;
+    userOperationHash?: string;
+    transactionHash?: string;
     to?: string;
-    from: string;
-    value?: string;
-    gasLimit?: string;
-    gasPrice?: string;
-    nonce: number;
+    from?: string;
+    owner: string;
     chainId?: number;
-    blockNumber?: number;
-    blockHash?: string;
-    timestamp?: number;
-    confirmations: number;
-    raw: any; // Raw transaction object
+    gasUsed?: string;
+    paymasterToken?: string | null;
+    raw: any;
   }
   
   export interface SignMessageRequest {
@@ -1803,4 +1799,37 @@ export interface UnsuspendUserRequest {
   projectOwnerPhone?: string;
   projectOwnerEmail?: string;
 }
-  
+
+// ============================================
+// OAuth Sign-in (Google / Apple)
+// ============================================
+
+// Google sign-in. The frontend obtains an ID token from Google's identity
+// flow (One-Tap `credential`, or the ID token returned by
+// `useGoogleLogin({ flow: "implicit" })` after exchanging the access token
+// at Google's tokeninfo endpoint). The backend verifies it before issuing
+// a session.
+export interface GoogleLoginRequest {
+  idToken: string;
+  // Optional referral code propagated to the new user when the account is
+  // created on first sign-in.
+  referrer?: string;
+}
+
+// Same shape as LoginResponse — Google sign-in produces a session identical
+// to email/phone login.
+export type GoogleLoginResponse = LoginResponse;
+
+// Apple Sign In. The frontend obtains an identity token from Apple — on
+// web via "Sign in with Apple JS" (`AppleID.auth.signIn()`), on iOS via
+// `ASAuthorizationAppleIDProvider`, on RN via expo-apple-authentication.
+// Apple only delivers email/name on the FIRST sign-in; clients should
+// forward `displayName` then. Subsequent sign-ins identify the user by
+// their durable Apple `sub`.
+export interface AppleLoginRequest {
+  idToken: string;
+  displayName?: string;
+  referrer?: string;
+}
+
+export type AppleLoginResponse = LoginResponse;

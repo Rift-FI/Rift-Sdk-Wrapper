@@ -16,6 +16,8 @@ import {
   GetMyRecoveryMethodsRequest,
   DeleteAllRecoveryMethodsRequest,
   UpdateUserRequest,
+  GoogleLoginRequest,
+  AppleLoginRequest,
 } from "../types";
 
 export const signup = async (
@@ -36,6 +38,30 @@ export const login = async (
 ) => {
   try {
     const response = await req.rift!.auth.login(req.body);
+    res.status(200).json(response);
+  } catch (error: any) {
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
+  }
+};
+
+export const loginWithGoogle = async (
+  req: Request<{}, {}, GoogleLoginRequest>,
+  res: Response
+) => {
+  try {
+    const response = await req.rift!.auth.loginWithGoogle(req.body);
+    res.status(200).json(response);
+  } catch (error: any) {
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
+  }
+};
+
+export const loginWithApple = async (
+  req: Request<{}, {}, AppleLoginRequest>,
+  res: Response
+) => {
+  try {
+    const response = await req.rift!.auth.loginWithApple(req.body);
     res.status(200).json(response);
   } catch (error: any) {
     { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };

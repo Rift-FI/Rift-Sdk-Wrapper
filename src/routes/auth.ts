@@ -2,6 +2,8 @@ import { Router } from "express";
 import {
   signup,
   login,
+  loginWithGoogle,
+  loginWithApple,
   updateUser,
   sendOtp,
   verifyOtp,
@@ -28,6 +30,8 @@ router.use(riftSdkMiddleware);
 
 router.post("/signup", signup);
 router.post("/login", login);
+router.post("/google", loginWithGoogle);
+router.post("/apple", loginWithApple);
 router.put("/user/update", updateUser);
 router.post("/otp/send", sendOtp);
 router.post("/otp/verify", verifyOtp);

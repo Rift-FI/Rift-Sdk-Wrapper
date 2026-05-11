@@ -1712,6 +1712,15 @@ export interface KYCVerifyAndSendOtpRequest {
   maxWaitTime?: number;
 }
 
+// At least one of email / phoneNumber / externalId is required at runtime.
+// We keep them all optional in the type so the union of valid call sites
+// type-checks; the SDK / backend rejects the empty case with a 400.
+export interface KYCUserExistsRequest {
+  email?: string;
+  phoneNumber?: string;
+  externalId?: string;
+}
+
 // ============================================
 // Loyalty Types
 // ============================================
@@ -1798,6 +1807,23 @@ export interface UnsuspendUserRequest {
   userId?: string;
   projectOwnerPhone?: string;
   projectOwnerEmail?: string;
+}
+
+// Query-string filters used by /users/suspended.
+// Only used to scope the admin listing to a specific project owner.
+export interface GetSuspendedUsersRequest {
+  projectOwnerPhone?: string;
+  projectOwnerEmail?: string;
+}
+
+// Query-string identifiers used by /users/status. The SDK requires at
+// least one of these at runtime; type stays loose for the union of valid
+// call sites.
+export interface GetUserStatusRequest {
+  phoneNumber?: string;
+  email?: string;
+  externalId?: string;
+  userId?: string;
 }
 
 // ============================================

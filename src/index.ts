@@ -1,4 +1,5 @@
 import express from "express";
+import cors from "cors";
 import dotenv from "dotenv";
 import authRouter from "./routes/auth";
 import merchantRouter from "./routes/merchant";
@@ -22,6 +23,27 @@ dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 3000;
+
+// CORS — allow any origin so browser apps (widget, React SDK, raw fetch
+// from a merchant's frontend) can call the wrapper directly. credentials
+// is true because some routes accept Authorization Bearer + cookies, and
+// we mirror the request origin in the response Access-Control-Allow-Origin
+// (which works under credentials: true, unlike a bare "*").
+app.use(
+  cors({
+    origin: true,
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-API-Key",
+      "x-api-key",
+      "X-Requested-With",
+    ],
+    maxAge: 86400,
+  })
+);
 
 app.use(express.json());
 

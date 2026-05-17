@@ -694,9 +694,28 @@ export interface RecoveryData {
     token: string;
   }
   
+  /**
+   * Real on-chain gas estimate for a transfer, denominated in the same
+   * token the user is sending (for ERC-20 via paymaster) or the chain's
+   * native asset (for raw ETH/MATIC/etc.).
+   *
+   * Legacy callers reading just `amount` + `token` still work. New
+   * callers should read the rich fields below to show "send X, gas Y,
+   * total Z" and hard-block when `sufficient === false`.
+   */
   export interface TransactionFeeResponse {
     amount: number;
     token: string;
+    gasFeeInToken?: string;
+    sendAmount?: string;
+    totalNeeded?: string;
+    tokenBalance?: string | null;
+    sufficient?: boolean | null;
+    deficit?: string;
+    chain?: string;
+    paymaster?: string | null;
+    smartAccount?: string;
+    tokenDecimals?: number;
   }
   
   // DeFi Types

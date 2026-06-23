@@ -6,7 +6,7 @@ export class DepositsService extends BaseService {
     async getAllDeposits(): Promise<GetAllDepositsResponse> {
         return this.authenticatedRequest<GetAllDepositsResponse>({
             method: "GET",
-            url: "/offramp/base-usdc/deposits",
+            url: "/v1/deposits",
         });
     }
 

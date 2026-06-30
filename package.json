@@ -1,6 +1,6 @@
 {
   "name": "rift-sdk-wrapper",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -13,7 +13,8 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "@rift-finance/wallet": "^1.4.34",
+    "@rift-finance/wallet": "^3.0.1",
+    "@rift-finance/wallet-v1": "npm:@rift-finance/wallet@1.4.34",
     "@types/cors": "^2.8.19",
     "cors": "^2.8.6",
     "dotenv": "^17.2.1",

@@ -18,6 +18,7 @@ import {
   UpdateUserRequest,
   GoogleLoginRequest,
   AppleLoginRequest,
+  MigrateToV3Request,
 } from "../types";
 
 export const signup = async (
@@ -242,6 +243,36 @@ export const deleteAllRecoveryMethods = async (
 ) => {
   try {
     const response = await req.rift!.auth.deleteAllRecoveryMethods(req.body);
+    res.status(200).json(response);
+  } catch (error: any) {
+    { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
+  }
+};
+
+/**
+ * v3 (non-custodial) migrate. Upgrades the authenticated user's wallet
+ * from v1 (KMS-only) or v2 (password-bound) to v3 (device-bound). Same
+ * EOA private key, new auth methods. Address preserved.
+ *
+ * Body shape:
+ *   {
+ *     "enrolledMethods": [
+ *       { "kind": "oidc", "iss": "https://accounts.google.com", "sub": "..." },
+ *       { "kind": "passkey", "cred_id_b64": "...", "cose_pubkey_b64": "..." }
+ *     ],
+ *     "oldPassword": "<required iff the current envelope is v2>"
+ *   }
+ *
+ * Idempotent: returns alreadyMigrated=true if the wallet is already v3.
+ */
+export const migrateToV3 = async (
+  req: Request<{}, {}, MigrateToV3Request>,
+  res: Response
+) => {
+  try {
+    // Uses req.riftV3 (v3 SDK at @rift-finance/wallet@^3.0.0) — the v1
+    // SDK at req.rift doesn't know about migrateToV3.
+    const response = await req.riftV3!.auth.migrateToV3(req.body);
     res.status(200).json(response);
   } catch (error: any) {
     { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };

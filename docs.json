@@ -69,6 +69,85 @@
       }
     },
     "schemas": {
+      "EnrolledMethodOidc": {
+        "type": "object",
+        "description": "OIDC (Google/Apple) auth method enrolled on a v3 wallet.",
+        "required": ["kind", "iss", "sub"],
+        "properties": {
+          "kind": { "type": "string", "enum": ["oidc"] },
+          "iss": { "type": "string", "description": "IdP issuer URL.", "example": "https://accounts.google.com" },
+          "sub": { "type": "string", "description": "IdP-stable subject for this user.", "example": "116977552730836164819" }
+        }
+      },
+      "EnrolledMethodPasskey": {
+        "type": "object",
+        "description": "WebAuthn passkey enrolled on a v3 wallet.",
+        "required": ["kind", "cred_id_b64", "cose_pubkey_b64"],
+        "properties": {
+          "kind": { "type": "string", "enum": ["passkey"] },
+          "cred_id_b64": { "type": "string", "description": "WebAuthn credential ID, base64." },
+          "cose_pubkey_b64": { "type": "string", "description": "COSE_Key for the credential's public key (ES256 / P-256), base64. Produce via PasskeyHelper.enrol() in SDK v2.0.0+." }
+        }
+      },
+      "EnrolledMethod": {
+        "oneOf": [
+          { "$ref": "#/components/schemas/EnrolledMethodOidc" },
+          { "$ref": "#/components/schemas/EnrolledMethodPasskey" }
+        ]
+      },
+      "AuthProofOidc": {
+        "type": "object",
+        "description": "Per-transaction consent proof — a Google/Apple id_token whose nonce claim equals the user_op_hash being signed.",
+        "required": ["kind", "id_token"],
+        "properties": {
+          "kind": { "type": "string", "enum": ["oidc"] },
+          "id_token": { "type": "string", "description": "Compact JWS id_token. nonce claim MUST equal user_op_hash." }
+        }
+      },
+      "AuthProofPasskey": {
+        "type": "object",
+        "description": "Per-transaction consent proof — a WebAuthn assertion whose challenge equals the user_op_hash being signed.",
+        "required": ["kind", "cred_id_b64", "client_data_json_b64", "authenticator_data_b64", "signature_b64"],
+        "properties": {
+          "kind": { "type": "string", "enum": ["passkey"] },
+          "cred_id_b64": { "type": "string" },
+          "client_data_json_b64": { "type": "string" },
+          "authenticator_data_b64": { "type": "string" },
+          "signature_b64": { "type": "string" }
+        }
+      },
+      "AuthProof": {
+        "oneOf": [
+          { "$ref": "#/components/schemas/AuthProofOidc" },
+          { "$ref": "#/components/schemas/AuthProofPasskey" }
+        ]
+      },
+      "MigrateToV3Request": {
+        "type": "object",
+        "required": ["enrolledMethods"],
+        "properties": {
+          "enrolledMethods": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "#/components/schemas/EnrolledMethod" },
+            "description": "Auth methods to enrol on the new v3 envelope. At least one is required. A user can enrol multiple (e.g. one passkey + Google as recovery)."
+          },
+          "oldPassword": {
+            "type": "string",
+            "description": "Required only if the user's current envelope is v2 (password-bound). Authorises the migration with the same secret that currently unlocks the wallet."
+          }
+        }
+      },
+      "MigrateToV3Response": {
+        "type": "object",
+        "required": ["success", "fromVersion", "toVersion", "alreadyMigrated"],
+        "properties": {
+          "success": { "type": "boolean" },
+          "fromVersion": { "type": "string", "enum": ["v1", "v2", "v3"] },
+          "toVersion": { "type": "string", "enum": ["v3"] },
+          "alreadyMigrated": { "type": "boolean", "description": "true if the wallet was already on v3 — no work was done." }
+        }
+      },
       "Error": {
         "type": "object",
         "description": "Standard error envelope returned by every wrapper endpoint on failure. The original upstream error is sanitised — HTML pages and overly long stack traces are truncated.",
@@ -929,6 +1008,23 @@
     }
   },
   "paths": {
+    "/api/v2/auth/migrate-to-v3": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Upgrade wallet to v3 (non-custodial)",
+        "description": "Upgrades the authenticated user's wallet from v1 (KMS-only) or v2 (password-bound) to v3 (device-bound, non-custodial). Same EOA private key, new auth methods sealed inside the enclave. Wallet address is PRESERVED. Idempotent - calling on an already-v3 wallet returns `alreadyMigrated: true` with no state change. After migration, every signing call MUST include an `authProof` produced by `PasskeyHelper.sign()` or `OidcHelper.sign()` from SDK v2.0.0+ - the enclave refuses to sign v3 envelopes without consent. SDK v1 clients can ignore this endpoint; their wallets stay on v1/v2 with the existing password / OTP flows.",
+        "security": [{ "BearerAuth": [] }, { "ApiKeyAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MigrateToV3Request" } } }
+        },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MigrateToV3Response" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
     "/api/v1/auth/signup": {
       "post": {
         "tags": ["Auth"],

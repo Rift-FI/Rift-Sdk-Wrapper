@@ -15,6 +15,7 @@ import bridgeRouter from "./routes/bridge";
 import walletConnectRouter from "./routes/wallet-connect";
 import userManagementRouter from "./routes/user-management";
 import defiRouter from "./routes/defi";
+import v2AuthRouter from "./routes/v2-auth";
 import swaggerUi from "swagger-ui-express";
 import * as swaggerDocument from "../docs.json";
 
@@ -64,6 +65,19 @@ app.use("/api/v1/bridge", bridgeRouter);
 app.use("/api/v1/walletconnect", walletConnectRouter);
 app.use("/api/v1/users", userManagementRouter);
 app.use("/api/v1/defi", defiRouter);
+
+// ─── v2 (non-custodial) namespace ──────────────────────────────────
+// /api/v2/* is additive. v1 endpoints continue to work and ALSO accept
+// the new optional fields (enrolledMethods at signup/login, authProof
+// on transactions) — so existing v1 clients can opt into v3 envelopes
+// without changing their URL. /api/v2/auth/migrate-to-v3 is the only
+// strictly-v2 endpoint (it had no v1 equivalent).
+app.use("/api/v2/auth", v2AuthRouter);
+
+// Existing v1 routers are intentionally NOT re-mounted at /api/v2/* to
+// avoid the duplication tax. Clients calling /api/v2/auth/login should
+// continue calling /api/v1/auth/login (the request body shape accepts
+// `enrolledMethods` either way).
 
 // Swagger UI Endpoint
 app.use(

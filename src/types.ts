@@ -389,7 +389,42 @@ export interface RecoveryData {
     accessToken: string;
   }
   
+  // v3 (device-bound, non-custodial) wire types. Mirror the shapes the
+  // enclave's protocol module accepts. See @rift-finance/wallet types.ts
+  // for the canonical definitions; this file keeps a local copy so
+  // the wrapper can declare its request types without a tight import.
+  export type EnrolledMethod =
+    | { kind: "oidc"; iss: string; sub: string }
+    | { kind: "passkey"; cred_id_b64: string; cose_pubkey_b64: string };
+
+  export type AuthProof =
+    | { kind: "oidc"; id_token: string }
+    | {
+        kind: "passkey";
+        cred_id_b64: string;
+        client_data_json_b64: string;
+        authenticator_data_b64: string;
+        signature_b64: string;
+      };
+
+  export interface MigrateToV3Request {
+    enrolledMethods: EnrolledMethod[];
+    /** Required iff the user's current envelope is v2 (password-bound). */
+    oldPassword?: string;
+  }
+
+  export interface MigrateToV3Response {
+    success: boolean;
+    fromVersion: "v1" | "v2" | "v3";
+    toVersion: "v3";
+    alreadyMigrated: boolean;
+  }
+
   // Authentication Types
+  // Wire shapes for /api/v1/auth/* — match the v1 SDK type contract
+  // verbatim. v2 routes that need the v3 SDK's extended shapes (with
+  // enrolledMethods) import directly from @rift-finance/wallet, NOT
+  // from this local types file.
   export type LoginRequest =
     | {
         phoneNumber: string;
@@ -411,7 +446,7 @@ export interface RecoveryData {
         externalId?: never;
         password?: never;
       };
-  
+
   export type SignupRequest =
     | {
         externalId: string;

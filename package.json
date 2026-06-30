@@ -13,7 +13,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "@rift-finance/wallet": "^3.0.1",
+    "@rift-finance/wallet": "^3.0.2",
     "@rift-finance/wallet-v1": "npm:@rift-finance/wallet@1.4.34",
     "@types/cors": "^2.8.19",
     "cors": "^2.8.6",

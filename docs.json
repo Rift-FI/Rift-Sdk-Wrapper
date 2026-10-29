@@ -3,7 +3,7 @@
   "info": {
     "title": "Rift SDK Wrapper API",
     "version": "1.0.0",
-    "description": "HTTP wrapper around the Rift Finance Wallet SDK (`@rift-finance/wallet`). Mirrors the SDK's services as REST endpoints so consumers can use Rift from any language. Every endpoint requires an `X-API-Key` header (the project's `sk_...` key). Most user-facing endpoints additionally require an `Authorization: Bearer <accessToken>` header, where `accessToken` is obtained from `/api/v1/auth/login`, `/api/v1/auth/google`, or `/api/v1/auth/apple`.\n\n**Timeout & retry policy**: the wrapper holds requests to upstream for up to 120s (mobile-money STK push can take 30-90s). Internal retries are disabled — if a request 5xxs, the caller should decide whether retrying is safe (most operations are non-idempotent; retrying signup/transactions can produce duplicates).\n\n**Error envelope**: failures return `{ \"error\": \"<message>\" }` with an appropriate HTTP status. HTML responses from upstream (e.g. Cloudflare 502 pages) are sanitised before being returned."
+    "description": "HTTP wrapper around the Rift Finance Wallet SDK (`@rift-finance/wallet`). Mirrors the SDK's services as REST endpoints so consumers can use Rift from any language. Every endpoint requires an `X-API-Key` header (the project's `sk_...` key). Most user-facing endpoints additionally require an `Authorization: Bearer <accessToken>` header, where `accessToken` is obtained from `/api/v1/auth/login`, `/api/v1/auth/google`, or `/api/v1/auth/apple`.\n\n**Timeout & retry policy**: the wrapper holds requests to upstream for up to 120s (mobile-money STK push can take 30-90s). Internal retries are disabled — if a request 5xxs, the caller should decide whether retrying is safe (most operations are non-idempotent; retrying signup/transactions can produce duplicates).\n\n**Error envelope**: failures return `{ \"error\": \"<message>\" }` with an appropriate HTTP status. HTML responses from upstream (e.g. Cloudflare 502 pages) are sanitised before being returned. Upstream 429 (rate limit / OTP lockout) and 503 (e.g. `parent-proxy overloaded`) keep their status. Upstream 500s carry no internal detail; when a `requestId` is available it is appended to the message. Every v1 envelope signing failure now reads `invalid credentials`."
   },
   "servers": [
     { "url": "https://developers.riftfi.xyz", "description": "Production" },
@@ -185,14 +185,15 @@
       },
       "SignupRequest": {
         "type": "object",
-        "description": "Either externalId+password OR email/phoneNumber. displayName recommended.",
+        "description": "Either externalId+password OR email/phoneNumber. displayName recommended. Email/phone sign-ups must include `otpCode` (sent to that email/phone via `/api/v1/auth/otp/send`) when the backend enforces REQUIRE_SIGNUP_OTP. When it does not, a supplied code is still verified, so always send it.",
         "properties": {
           "externalId": { "type": "string" },
           "password": { "type": "string" },
           "email": { "type": "string", "format": "email" },
           "phoneNumber": { "type": "string", "description": "E.164 format, e.g. +254712345678" },
           "displayName": { "type": "string" },
-          "paymentAccount": { "type": "string" }
+          "paymentAccount": { "type": "string" },
+          "otpCode": { "type": "string", "description": "OTP sent to the email (or phone) being registered. Log in afterwards with the SAME code: signup leaves a 10-minute one-time proof." }
         }
       },
       "SignupResponse": {
@@ -273,7 +274,10 @@
           "paymentAccount": { "type": "string" },
           "instantWithdrawals": { "type": "boolean" },
           "autoSwapEnabled": { "type": "boolean", "description": "Auto-bridge incoming USDC/USDT to the target chain." },
-          "autoSwapTargetChain": { "$ref": "#/components/schemas/ChainName" }
+          "autoSwapTargetChain": { "$ref": "#/components/schemas/ChainName" },
+          "otpCode": { "type": "string", "description": "Required when changing ONE of email / phoneNumber: the OTP sent to the NEW value." },
+          "emailOtpCode": { "type": "string", "description": "Required (with phoneOtpCode) when changing email AND phoneNumber together: OTP sent to the NEW email." },
+          "phoneOtpCode": { "type": "string", "description": "Required (with emailOtpCode) when changing email AND phoneNumber together: OTP sent to the NEW phone." }
         }
       },
       "DeleteUserRequest": {
@@ -962,15 +966,15 @@
       },
       "SuspendUserRequest": {
         "type": "object",
-        "description": "Provide ONE user identifier and ONE project-owner identifier.",
+        "description": "Provide ONE user identifier. The call is authorised by the project owner's bearer token (Authorization header). projectOwnerPhone / projectOwnerEmail are deprecated and ignored.",
         "properties": {
           "phoneNumber": { "type": "string" },
           "email": { "type": "string", "format": "email" },
           "externalId": { "type": "string" },
           "userId": { "type": "string" },
           "reason": { "type": "string" },
-          "projectOwnerPhone": { "type": "string" },
-          "projectOwnerEmail": { "type": "string", "format": "email" }
+          "projectOwnerPhone": { "type": "string", "deprecated": true, "description": "Ignored. Use the project owner's bearer token." },
+          "projectOwnerEmail": { "type": "string", "format": "email", "deprecated": true, "description": "Ignored. Use the project owner's bearer token." }
         }
       },
       "SuspendUserResponse": {
@@ -1029,7 +1033,7 @@
       "post": {
         "tags": ["Auth"],
         "summary": "Create a new wallet account",
-        "description": "Creates a Rift wallet account scoped to the project identified by the X-API-Key. Use either externalId+password OR email/phoneNumber. The new user does NOT have a session - call `/auth/login` next.",
+        "description": "Creates a Rift wallet account scoped to the project identified by the X-API-Key. Use either externalId+password OR email/phoneNumber. For email/phone, call `/auth/otp/send` first and include the code as `otpCode` (required when the backend enforces REQUIRE_SIGNUP_OTP; a 400 with `requiresOTP` means it is missing). The new user does NOT have a session - call `/auth/login` next with the SAME `otpCode`.",
         "requestBody": {
           "required": true,
           "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SignupRequest" } } }
@@ -1137,7 +1141,7 @@
       "put": {
         "tags": ["Auth"],
         "summary": "Update the authenticated user's profile",
-        "description": "Use to change displayName, email, phone, notification email, payment account, or to toggle auto-swap.",
+        "description": "Use to change displayName, email, phone, notification email, payment account, or to toggle auto-swap. Changing email or phone requires an OTP sent to the NEW value (`/auth/otp/send`): pass `otpCode` when changing one of them, or `emailOtpCode` + `phoneOtpCode` when changing both.",
         "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
         "requestBody": {
           "required": true,
@@ -2187,6 +2191,8 @@
       "post": {
         "tags": ["User Management"],
         "summary": "Suspend a user",
+        "description": "Project-owner only. Send the project owner's token as `Authorization: Bearer <token>` together with `X-API-Key`. Without it the wrapper returns 401.",
+        "security": [{ "ApiKeyAuth": [], "BearerAuth": [] }],
         "requestBody": {
           "required": true,
           "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuspendUserRequest" } } }
@@ -2200,6 +2206,8 @@
       "post": {
         "tags": ["User Management"],
         "summary": "Unsuspend a user",
+        "description": "Project-owner only. Send the project owner's token as `Authorization: Bearer <token>` together with `X-API-Key`. Without it the wrapper returns 401.",
+        "security": [{ "ApiKeyAuth": [], "BearerAuth": [] }],
         "requestBody": {
           "required": true,
           "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuspendUserRequest" } } }
@@ -2211,9 +2219,11 @@
       "get": {
         "tags": ["User Management"],
         "summary": "List suspended users",
+        "description": "Project-owner only. Send the project owner's token as `Authorization: Bearer <token>` together with `X-API-Key`. Without it the wrapper returns 401.",
+        "security": [{ "ApiKeyAuth": [], "BearerAuth": [] }],
         "parameters": [
-          { "name": "projectOwnerPhone", "in": "query", "schema": { "type": "string" } },
-          { "name": "projectOwnerEmail", "in": "query", "schema": { "type": "string", "format": "email" } }
+          { "name": "projectOwnerPhone", "in": "query", "deprecated": true, "description": "Ignored. Use the project owner's bearer token.", "schema": { "type": "string" } },
+          { "name": "projectOwnerEmail", "in": "query", "deprecated": true, "description": "Ignored. Use the project owner's bearer token.", "schema": { "type": "string", "format": "email" } }
         ],
         "responses": {
           "200": { "description": "OK", "content": { "application/json": { "schema": {
@@ -2236,6 +2246,8 @@
       "get": {
         "tags": ["User Management"],
         "summary": "Check whether a specific user is suspended",
+        "description": "Project-owner only. Also served at `/api/v1/users/lookup`. Send the project owner's token as `Authorization: Bearer <token>` together with `X-API-Key`. Without it the wrapper returns 401.",
+        "security": [{ "ApiKeyAuth": [], "BearerAuth": [] }],
         "parameters": [
           { "name": "phoneNumber", "in": "query", "schema": { "type": "string" } },
           { "name": "email", "in": "query", "schema": { "type": "string", "format": "email" } },

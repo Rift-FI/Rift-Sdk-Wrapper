@@ -463,6 +463,13 @@ export interface RecoveryData {
         email?: string;
         displayName: string;
         paymentAccount?: string;
+        /**
+         * OTP sent to the email (or phone) being registered via
+         * POST /api/v1/auth/otp/send. Required when the backend enforces
+         * REQUIRE_SIGNUP_OTP; verified when present otherwise. Log in
+         * afterwards with the SAME code (a 10-minute one-time proof is left).
+         */
+        otpCode?: string;
       };
   
   export interface SignupResponse {
@@ -537,6 +544,12 @@ export interface RecoveryData {
     paymentAccount?: string;
     notificationEmail?: string;
     instantWithdrawals?: boolean;
+    /** Changing ONE of email / phoneNumber: OTP sent to the NEW value. */
+    otpCode?: string;
+    /** Changing BOTH email and phoneNumber: OTP sent to the NEW email. */
+    emailOtpCode?: string;
+    /** Changing BOTH email and phoneNumber: OTP sent to the NEW phone. */
+    phoneOtpCode?: string;
     [key: string]: any;
   }
   
@@ -1850,7 +1863,9 @@ export interface SuspendUserRequest {
   externalId?: string;
   userId?: string;
   reason?: string;
+  /** @deprecated Ignored and never forwarded. Authorise with the project owner's bearer token. */
   projectOwnerPhone?: string;
+  /** @deprecated Ignored and never forwarded. Authorise with the project owner's bearer token. */
   projectOwnerEmail?: string;
 }
 
@@ -1859,14 +1874,18 @@ export interface UnsuspendUserRequest {
   email?: string;
   externalId?: string;
   userId?: string;
+  /** @deprecated Ignored and never forwarded. Authorise with the project owner's bearer token. */
   projectOwnerPhone?: string;
+  /** @deprecated Ignored and never forwarded. Authorise with the project owner's bearer token. */
   projectOwnerEmail?: string;
 }
 
-// Query-string filters used by /users/suspended.
-// Only used to scope the admin listing to a specific project owner.
+// Query-string filters used by /users/suspended. Both fields are
+// deprecated: the listing is scoped by the owner's bearer token + API key.
 export interface GetSuspendedUsersRequest {
+  /** @deprecated Ignored and never forwarded. Authorise with the project owner's bearer token. */
   projectOwnerPhone?: string;
+  /** @deprecated Ignored and never forwarded. Authorise with the project owner's bearer token. */
   projectOwnerEmail?: string;
 }
 

@@ -48,6 +48,7 @@ https://api.riftfi.xyz/api-docs
 - User profile management and updates
 - Account recovery and password reset
 - User deletion and logout
+- User suspension / status lookup for the project owner (`/api/v1/users/*`)
 
 ### 💼 Merchant Services  
 - Create and manage invoices
@@ -214,6 +215,40 @@ curl -X POST "https://api.riftfi.xyz/api/v1/offramp/preview_exchange_rate" \
   }'
 ```
 
+### Sign up with email / phone (OTP)
+Email and phone sign-ups prove ownership of the identifier with an OTP. One code covers signup and the first login:
+```bash
+# 1. Send a code to the email being registered
+curl -X POST "https://api.riftfi.xyz/api/v1/auth/otp/send" \
+  -H "X-API-Key: your_api_key" -H "Content-Type: application/json" \
+  -d '{ "email": "alice@example.com" }'
+
+# 2. Sign up with the code
+curl -X POST "https://api.riftfi.xyz/api/v1/auth/signup" \
+  -H "X-API-Key: your_api_key" -H "Content-Type: application/json" \
+  -d '{ "email": "alice@example.com", "displayName": "Alice", "otpCode": "123456" }'
+
+# 3. Log in with the SAME code (signup leaves a 10-minute one-time proof)
+curl -X POST "https://api.riftfi.xyz/api/v1/auth/login" \
+  -H "X-API-Key: your_api_key" -H "Content-Type: application/json" \
+  -d '{ "email": "alice@example.com", "otpCode": "123456" }'
+```
+`otpCode` is required when the backend enforces `REQUIRE_SIGNUP_OTP`. When it does not, a supplied code is still verified, so always send it. Phone works the same way: `{ "phone": ... }` for `otp/send`, `phoneNumber` for signup and login. External ID + password sign-ups need no OTP.
+
+### Change email / phone (OTP for the new value)
+`PUT /api/v1/auth/user/update` needs an OTP sent to the NEW value. Changing one of them: send `otpCode`. Changing both: send `emailOtpCode` and `phoneOtpCode`. Other fields need no OTP.
+
+### User management (project owner only)
+`/api/v1/users/suspend`, `/unsuspend`, `/suspended`, `/status` and `/lookup` are authorised by the **project owner's** access token. Log in as the project owner and send it with the API key:
+```bash
+curl -X POST "https://api.riftfi.xyz/api/v1/users/suspend" \
+  -H "X-API-Key: your_api_key" \
+  -H "Authorization: Bearer project_owner_access_token" \
+  -H "Content-Type: application/json" \
+  -d '{ "email": "user@example.com", "reason": "Fraud" }'
+```
+`projectOwnerEmail` / `projectOwnerPhone` are deprecated and ignored (never forwarded). Calls without a bearer token get `401`.
+
 ## 🔧 Error Handling
 
 All endpoints return consistent error responses:
@@ -229,7 +264,13 @@ All endpoints return consistent error responses:
 - `201` - Created successfully 
 - `400` - Bad request (invalid parameters)
 - `401` - Unauthorized (missing/invalid auth)
-- `500` - Internal server error
+- `429` - Rate limited, or OTP lockout after too many wrong codes. Wait before sending a new code
+- `500` - Internal server error. Upstream 500s carry no internal detail; a `requestId` is appended to the message when available
+- `503` - Upstream overloaded (e.g. `parent-proxy overloaded`). Back off
+
+Notes:
+- Every signing failure on a v1 (custodial) wallet now reads `invalid credentials`. Don't match on the older, more specific messages.
+- The wrapper never retries internally (non-idempotent calls could be duplicated, then fail with `409`). Decide at the caller whether a retry is safe.
 
 ## 🏗 Architecture
 

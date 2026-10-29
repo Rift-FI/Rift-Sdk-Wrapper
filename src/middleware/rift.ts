@@ -29,6 +29,16 @@ declare global {
   }
 }
 
+// Replace the SDK HTTP client's retry loop with exactly one fetch. See the
+// retries: 0 note below for why the wrapper must never retry internally.
+function enforceSingleAttempt(sdk: unknown): void {
+  const httpClient = (sdk as any)?.httpClient;
+  if (httpClient && typeof httpClient.executeWithRetry === "function") {
+    httpClient.executeWithRetry = (url: string, options: RequestInit) =>
+      fetch(url, options);
+  }
+}
+
 export const riftSdkMiddleware = (
   req: Request,
   res: Response,
@@ -72,6 +82,14 @@ export const riftSdkMiddleware = (
       timeout: 120_000,
       retries: 0,
     });
+
+    // The published SDKs (wallet@1.4.34 and wallet@3.0.x) compute
+    // `this.config.retries || 3`, so `retries: 0` above is silently
+    // turned into 3 retries on 5xx / network errors. Fixed in the SDK
+    // source (`??`), but until a fixed version is published and pinned
+    // here, pin single-attempt behaviour on the HTTP client directly.
+    enforceSingleAttempt(req.rift);
+    enforceSingleAttempt(req.riftV3);
 
     next();
   } catch (error: any) {

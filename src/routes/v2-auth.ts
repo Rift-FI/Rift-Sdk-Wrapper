@@ -18,8 +18,8 @@ import { riftSdkMiddleware } from "../middleware/rift";
 const router = Router();
 router.use(riftSdkMiddleware);
 
-// Upgrade v1 / v2 envelope → v3 (device-bound). Idempotent — calling on
-// an already-v3 wallet returns alreadyMigrated=true with no DB write.
+// Removed: answers 410 REPLACED_BY_PASSKEY_WALLETS (see controller). Use
+// /api/v1/passkeys instead.
 router.post("/migrate-to-v3", migrateToV3);
 
 export default router;

@@ -3,7 +3,7 @@
   "info": {
     "title": "Rift SDK Wrapper API",
     "version": "1.0.0",
-    "description": "HTTP wrapper around the Rift Finance Wallet SDK (`@rift-finance/wallet`). Mirrors the SDK's services as REST endpoints so consumers can use Rift from any language. Every endpoint requires an `X-API-Key` header (the project's `sk_...` key). Most user-facing endpoints additionally require an `Authorization: Bearer <accessToken>` header, where `accessToken` is obtained from `/api/v1/auth/login`, `/api/v1/auth/google`, or `/api/v1/auth/apple`.\n\n**Timeout & retry policy**: the wrapper holds requests to upstream for up to 120s (mobile-money STK push can take 30-90s). Internal retries are disabled — if a request 5xxs, the caller should decide whether retrying is safe (most operations are non-idempotent; retrying signup/transactions can produce duplicates).\n\n**Error envelope**: failures return `{ \"error\": \"<message>\" }` with an appropriate HTTP status. HTML responses from upstream (e.g. Cloudflare 502 pages) are sanitised before being returned. Upstream 429 (rate limit / OTP lockout) and 503 (e.g. `parent-proxy overloaded`) keep their status. Upstream 500s carry no internal detail; when a `requestId` is available it is appended to the message. Every v1 envelope signing failure now reads `invalid credentials`."
+    "description": "HTTP wrapper around the Rift Finance Wallet SDK (`@rift-finance/wallet`). Mirrors the SDK's services as REST endpoints so consumers can use Rift from any language. Every endpoint requires an `X-API-Key` header (the project's `sk_...` key). Most user-facing endpoints additionally require an `Authorization: Bearer <accessToken>` header, where `accessToken` is obtained from `/api/v1/auth/login`, `/api/v1/auth/google`, or `/api/v1/auth/apple`.\n\n**Timeout & retry policy**: the wrapper holds requests to upstream for up to 120s (mobile-money STK push can take 30-90s). Internal retries are disabled — if a request 5xxs, the caller should decide whether retrying is safe (most operations are non-idempotent; retrying signup/transactions can produce duplicates).\n\n**Error envelope**: failures return `{ \"error\": \"<message>\" }` with an appropriate HTTP status. HTML responses from upstream (e.g. Cloudflare 502 pages) are sanitised before being returned. Upstream 429 (rate limit / OTP lockout) and 503 (e.g. `parent-proxy overloaded`) keep their status. Upstream 500s carry no internal detail; when a `requestId` is available it is appended to the message. Every v1 envelope signing failure now reads `invalid credentials`. Upstream 409 (e.g. `PASSKEY_SETUP_REQUIRED`) and 410 (`EOA_SIGNING_REMOVED`, `REPLACED_BY_PASSKEY_WALLETS`) also keep their status.\n\n**Passkey-owned wallets**: every Rift wallet is a Safe smart account owned only by the user's passkeys; no server (Rift or this wrapper) holds a key that can move funds. Fund-moving routes called without a passkey proof answer **202** `{ status: \"APPROVAL_REQUIRED\", approvalId, approvalUrl, expiresAt, summary }` (relayed unchanged). The user opens `approvalUrl` and approves with a passkey; poll `GET /api/v1/approvals/{id}`. Browser clients can instead use the two-phase routes: preview → passkey-sign `hashToSign` → submit `{ ticketId, authProof }`. Google / Apple are login only."
   },
   "servers": [
     { "url": "https://developers.riftfi.xyz", "description": "Production" },
@@ -25,7 +25,9 @@
     { "name": "Notifications", "description": "Push notification subscriptions and broadcasts." },
     { "name": "WalletConnect", "description": "Pair with DApps over WalletConnect v2, manage sessions and requests." },
     { "name": "Deposits", "description": "Historical on-chain USDC deposits seen by the Rift indexer." },
-    { "name": "User Management", "description": "Project admin: suspend/unsuspend users, list suspended users." }
+    { "name": "User Management", "description": "Project admin: suspend/unsuspend users, list suspended users." },
+    { "name": "Passkeys", "description": "Passkeys that own the user's Safe wallet: register, list, add (recovery devices), remove, wallet status." },
+    { "name": "Approvals", "description": "Approval requests created by fund-moving calls without a passkey proof; the user approves them with a passkey." }
   ],
   "security": [
     { "ApiKeyAuth": [] }
@@ -69,6 +71,78 @@
       }
     },
     "schemas": {
+      "ApprovalRequired": {
+        "type": "object",
+        "description": "HTTP 202. The operation was NOT executed: the user must approve it with a passkey at approvalUrl.",
+        "properties": {
+          "status": { "type": "string", "enum": ["APPROVAL_REQUIRED"] },
+          "approvalId": { "type": "string" },
+          "approvalUrl": { "type": "string", "example": "https://app.riftfi.com/approve/6f1c..." },
+          "expiresAt": { "type": "string", "format": "date-time" },
+          "summary": { "type": "object", "additionalProperties": true }
+        },
+        "required": ["status", "approvalId", "approvalUrl", "expiresAt", "summary"]
+      },
+      "PasskeyAuthProof": {
+        "type": "object",
+        "description": "WebAuthn assertion whose challenge is the 32 raw bytes of hashToSign. Standard base64. `kind: oidc` is rejected (400 PASSKEY_REQUIRED).",
+        "properties": {
+          "kind": { "type": "string", "enum": ["passkey"] },
+          "cred_id_b64": { "type": "string" },
+          "client_data_json_b64": { "type": "string" },
+          "authenticator_data_b64": { "type": "string" },
+          "signature_b64": { "type": "string", "description": "DER signature from the authenticator" }
+        },
+        "required": ["kind", "cred_id_b64", "client_data_json_b64", "authenticator_data_b64", "signature_b64"]
+      },
+      "TwoPhasePreview": {
+        "type": "object",
+        "properties": {
+          "ticketId": { "type": "string" },
+          "hashToSign": { "type": "string", "description": "0x + 32 bytes" },
+          "chainId": { "type": "integer" },
+          "summary": { "type": "object", "additionalProperties": true },
+          "allowCredentials": { "type": "array", "items": { "type": "string" } },
+          "expiresAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "TwoPhaseSubmit": {
+        "type": "object",
+        "properties": {
+          "ticketId": { "type": "string" },
+          "authProof": { "$ref": "#/components/schemas/PasskeyAuthProof" }
+        },
+        "required": ["ticketId", "authProof"]
+      },
+      "PasskeySignatures": {
+        "type": "object",
+        "properties": {
+          "signatures": { "type": "array", "items": { "$ref": "#/components/schemas/TwoPhaseSubmit" } }
+        }
+      },
+      "Approval": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "status": { "type": "string", "enum": ["pending", "approved", "rejected", "expired", "failed"] },
+          "summary": { "type": "object", "additionalProperties": true },
+          "chainId": { "type": "integer", "nullable": true },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "expiresAt": { "type": "string", "format": "date-time" },
+          "result": { "type": "object", "properties": { "transactionHash": { "type": "string" }, "userOpHash": { "type": "string" } } }
+        }
+      },
+      "WalletStatus": {
+        "type": "object",
+        "properties": {
+          "mode": { "type": "string", "enum": ["none", "legacy", "passkey"] },
+          "walletAddress": { "type": "string", "nullable": true },
+          "previousAddress": { "type": "string", "nullable": true },
+          "passkeyCount": { "type": "integer" },
+          "chains": { "type": "array", "items": { "type": "object", "properties": { "chainId": { "type": "integer" }, "deployed": { "type": "boolean" }, "ownerMode": { "type": "string", "enum": ["legacy_eoa", "passkey", "undeployed"] } } } },
+          "needsPasskeySetup": { "type": "boolean" }
+        }
+      },
       "EnrolledMethodOidc": {
         "type": "object",
         "description": "OIDC (Google/Apple) auth method enrolled on a v3 wallet.",
@@ -997,6 +1071,7 @@
       }
     },
     "responses": {
+      "ApprovalRequired": { "description": "Approval required (operation not executed). Give approvalUrl to the user.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApprovalRequired" } } } },
       "Unauthorized": {
         "description": "Missing or invalid X-API-Key (and/or Authorization header on user-scoped routes).",
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
@@ -1015,18 +1090,11 @@
     "/api/v2/auth/migrate-to-v3": {
       "post": {
         "tags": ["Auth"],
-        "summary": "Upgrade wallet to v3 (non-custodial)",
-        "description": "Upgrades the authenticated user's wallet from v1 (KMS-only) or v2 (password-bound) to v3 (device-bound, non-custodial). Same EOA private key, new auth methods sealed inside the enclave. Wallet address is PRESERVED. Idempotent - calling on an already-v3 wallet returns `alreadyMigrated: true` with no state change. After migration, every signing call MUST include an `authProof` produced by `PasskeyHelper.sign()` or `OidcHelper.sign()` from SDK v2.0.0+ - the enclave refuses to sign v3 envelopes without consent. SDK v1 clients can ignore this endpoint; their wallets stay on v1/v2 with the existing password / OTP flows.",
+        "summary": "Removed: replaced by passkey wallets",
+        "description": "Always answers **410** `{ error: \"REPLACED_BY_PASSKEY_WALLETS\", see: \"/api/v1/passkeys\" }`. v3 enclave envelopes were replaced by passkey-owned Safe wallets. Register a passkey instead (`POST /api/v1/passkeys/options`, then `POST /api/v1/passkeys`); legacy wallets keep their address.",
+        "deprecated": true,
         "security": [{ "BearerAuth": [] }, { "ApiKeyAuth": [] }],
-        "requestBody": {
-          "required": true,
-          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MigrateToV3Request" } } }
-        },
-        "responses": {
-          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MigrateToV3Response" } } } },
-          "400": { "$ref": "#/components/responses/BadRequest" },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
-        }
+        "responses": { "410": { "description": "Gone" } }
       }
     },
     "/api/v1/auth/signup": {
@@ -1403,7 +1471,7 @@
       "post": {
         "tags": ["Transactions"],
         "summary": "Send crypto",
-        "description": "Real transaction - always confirm with the user first. Requires re-auth (OTP or password) in the body in addition to the bearer token.",
+        "description": "Real transaction - always confirm with the user first. **Passkey wallets:** the wrapper never holds a passkey, so without `ticketId` + `authProof` this returns **202** `{ status: \"APPROVAL_REQUIRED\", approvalId, approvalUrl, expiresAt, summary }`. Give `approvalUrl` to the user (they approve with a passkey) and track it with `GET /api/v1/approvals/{id}`. Never retried. To submit a previewed transfer, add `ticketId` + `authProof` (from `/api/v1/transaction/preview`).",
         "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
         "requestBody": {
           "required": true,
@@ -1411,6 +1479,7 @@
         },
         "responses": {
           "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TransactionResponse" } } } },
+          "202": { "$ref": "#/components/responses/ApprovalRequired" },
           "400": { "$ref": "#/components/responses/BadRequest" },
           "401": { "$ref": "#/components/responses/Unauthorized" }
         }
@@ -1470,14 +1539,16 @@
     "/api/v1/signer/sign-transaction": {
       "post": {
         "tags": ["Signer"],
-        "summary": "Sign a transaction without broadcasting it",
+        "summary": "Removed: raw EOA transaction signing",
+        "description": "Rift wallets are passkey-owned Safe smart accounts; there is no EOA key. The backend answers **410** `EOA_SIGNING_REMOVED`, passed through. Use `/api/v1/signer/send-transaction` (UserOperation) or the two-phase `preview-user-op` / `submit-prepared` routes.",
+        "deprecated": true,
         "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
         "requestBody": {
           "required": true,
           "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SignTransactionRequest" } } }
         },
         "responses": {
-          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SignTransactionResponse" } } } }
+          "410": { "description": "EOA_SIGNING_REMOVED" }
         }
       }
     },
@@ -1485,14 +1556,15 @@
       "post": {
         "tags": ["Signer"],
         "summary": "Execute a call via the user's smart wallet as an ERC-4337 UserOperation",
-        "description": "On-chain sender is the SMART WALLET, signed by the EOA owner. Returns a UserOperation hash - NOT a classic tx hash. Do not link as `etherscan.io/tx/<hash>`; use a bundler-aware explorer (jiffyscan.xyz). Gas is sponsored by default; pass `paymasterToken` (ERC-20) to pay in a token.",
+        "description": "On-chain sender is the user's passkey-owned SMART WALLET (Safe). **Passkey wallets:** the wrapper never holds a passkey, so without `ticketId` + `authProof` this returns **202** `{ status: \"APPROVAL_REQUIRED\", approvalId, approvalUrl, expiresAt, summary }`. Give `approvalUrl` to the user (they approve with a passkey) and track it with `GET /api/v1/approvals/{id}`. Never retried. Returns a UserOperation hash - NOT a classic tx hash. Do not link as `etherscan.io/tx/<hash>`; use a bundler-aware explorer (jiffyscan.xyz). Gas is sponsored by default; pass `paymasterToken` (ERC-20) to pay in a token.",
         "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
         "requestBody": {
           "required": true,
           "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SendTransactionRequest" } } }
         },
         "responses": {
-          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SendTransactionResponse" } } } }
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SendTransactionResponse" } } } },
+          "202": { "$ref": "#/components/responses/ApprovalRequired" }
         }
       }
     },
@@ -1500,13 +1572,15 @@
       "post": {
         "tags": ["Signer"],
         "summary": "Sign an arbitrary message (off-chain auth, DApp signatures, etc.)",
+        "description": "Signed by the user's Safe (ERC-1271; ERC-6492-wrapped when the Safe is not deployed on that chain). **Passkey wallets:** the wrapper never holds a passkey, so without `ticketId` + `authProof` this returns **202** `{ status: \"APPROVAL_REQUIRED\", approvalId, approvalUrl, expiresAt, summary }`. Give `approvalUrl` to the user (they approve with a passkey) and track it with `GET /api/v1/approvals/{id}`. Never retried. Two-phase alternative: `/api/v1/signer/preview-message` + `/api/v1/signer/submit-message`.",
         "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
         "requestBody": {
           "required": true,
           "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SignMessageRequest" } } }
         },
         "responses": {
-          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SignMessageResponse" } } } }
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SignMessageResponse" } } } },
+          "202": { "$ref": "#/components/responses/ApprovalRequired" }
         }
       }
     },
@@ -1611,7 +1685,7 @@
       "post": {
         "tags": ["Bridge"],
         "summary": "Execute a cross-chain bridge transfer",
-        "description": "Tokens arrive in 1-5 minutes. No OTP needed for bridge.",
+        "description": "Tokens arrive in 1-5 minutes. **Passkey wallets:** the wrapper never holds a passkey, so without `ticketId` + `authProof` this returns **202** `{ status: \"APPROVAL_REQUIRED\", approvalId, approvalUrl, expiresAt, summary }`. Give `approvalUrl` to the user (they approve with a passkey) and track it with `GET /api/v1/approvals/{id}`. Never retried.",
         "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
         "requestBody": {
           "required": true,
@@ -1626,7 +1700,8 @@
       "post": {
         "tags": ["DeFi"],
         "summary": "Swap one token for another on a single chain",
-        "description": "Same-chain only - use `/bridge/execute` for cross-chain. No OTP required.",
+        "description": "**Deprecated**: the upstream `/v1/defi/swap` is no longer served. Kept as a passthrough; if the backend answers, a 202 approval request is relayed. Build swap calls and use `/api/v1/signer/send-transaction` instead.",
+        "deprecated": true,
         "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
         "requestBody": {
           "required": true,
@@ -1692,7 +1767,7 @@
       "post": {
         "tags": ["Offramp"],
         "summary": "Execute an offramp (crypto -> fiat) payment",
-        "description": "Real payment - confirm with user. Long-running: can take 30-60+ seconds (on-chain tx + fiat settlement). A timeout does NOT mean failure - poll `/offramp/poll_order_status` with the returned `transactionCode`.\n\nRecipient JSON shapes per currency (stringify the object and put in `recipient`):\n- **KES (M-Pesa)**: `{\"type\":\"MOBILE\",\"accountIdentifier\":\"+254...\",\"institution\":\"Safaricom\"}`\n- **KES (Paybill)**: `{\"type\":\"PAYBILL\",\"accountIdentifier\":\"shortcode\",\"accountNumber\":\"acct\",\"institution\":\"Safaricom\"}`\n- **NGN (bank)**: `{\"bankCode\":\"GTBINGLA\",\"accountIdentifier\":\"0123456789\",\"accountName\":\"Name\",\"institution\":\"GTBank\"}`\n- **UGX (mobile)**: `{\"bankCode\":\"MOMOUGPC\",\"accountIdentifier\":\"+256...\",\"accountName\":\"Name\",\"institution\":\"MTN\"}`\n- **GHS (mobile)**: `{\"bankCode\":\"MOMOGHPC\",\"accountIdentifier\":\"+233...\",\"accountName\":\"Name\",\"institution\":\"MTN\"}`\n- **ETB (mobile)**: `{\"bankCode\":\"TELEBPC\",\"accountIdentifier\":\"+251...\",\"accountName\":\"Name\",\"institution\":\"Telebirr\"}`\n- **TZS (mobile)**: `{\"bankCode\":\"TIGOTZPC\",\"accountIdentifier\":\"+255...\",\"accountName\":\"Name\",\"institution\":\"Vodacom\"}`\n- **BRL (PIX)**: `{\"bankCode\":\"PIXKBRPC\",\"accountIdentifier\":\"pix_key\",\"accountName\":\"Name\",\"institution\":\"pix\"}`",
+        "description": "Real payment - confirm with user. **Passkey wallets:** the wrapper never holds a passkey, so without `ticketId` + `authProof` this returns **202** `{ status: \"APPROVAL_REQUIRED\", approvalId, approvalUrl, expiresAt, summary }`. Give `approvalUrl` to the user (they approve with a passkey) and track it with `GET /api/v1/approvals/{id}`. Never retried. Long-running: can take 30-60+ seconds (on-chain tx + fiat settlement). A timeout does NOT mean failure - poll `/offramp/poll_order_status` with the returned `transactionCode`.\n\nRecipient JSON shapes per currency (stringify the object and put in `recipient`):\n- **KES (M-Pesa)**: `{\"type\":\"MOBILE\",\"accountIdentifier\":\"+254...\",\"institution\":\"Safaricom\"}`\n- **KES (Paybill)**: `{\"type\":\"PAYBILL\",\"accountIdentifier\":\"shortcode\",\"accountNumber\":\"acct\",\"institution\":\"Safaricom\"}`\n- **NGN (bank)**: `{\"bankCode\":\"GTBINGLA\",\"accountIdentifier\":\"0123456789\",\"accountName\":\"Name\",\"institution\":\"GTBank\"}`\n- **UGX (mobile)**: `{\"bankCode\":\"MOMOUGPC\",\"accountIdentifier\":\"+256...\",\"accountName\":\"Name\",\"institution\":\"MTN\"}`\n- **GHS (mobile)**: `{\"bankCode\":\"MOMOGHPC\",\"accountIdentifier\":\"+233...\",\"accountName\":\"Name\",\"institution\":\"MTN\"}`\n- **ETB (mobile)**: `{\"bankCode\":\"TELEBPC\",\"accountIdentifier\":\"+251...\",\"accountName\":\"Name\",\"institution\":\"Telebirr\"}`\n- **TZS (mobile)**: `{\"bankCode\":\"TIGOTZPC\",\"accountIdentifier\":\"+255...\",\"accountName\":\"Name\",\"institution\":\"Vodacom\"}`\n- **BRL (PIX)**: `{\"bankCode\":\"PIXKBRPC\",\"accountIdentifier\":\"pix_key\",\"accountName\":\"Name\",\"institution\":\"pix\"}`",
         "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
         "requestBody": {
           "required": true,
@@ -2120,9 +2195,11 @@
       "post": {
         "tags": ["WalletConnect"],
         "summary": "Approve a pending DApp request",
+        "description": "Optional body `{ ticketId, authProof }` from `/requests/{id}/preview` signs and answers the DApp. **Passkey wallets:** the wrapper never holds a passkey, so without `ticketId` + `authProof` this returns **202** `{ status: \"APPROVAL_REQUIRED\", approvalId, approvalUrl, expiresAt, summary }`. Give `approvalUrl` to the user (they approve with a passkey) and track it with `GET /api/v1/approvals/{id}`. Never retried.",
         "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "OK" } }
+        "requestBody": { "required": false, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TwoPhaseSubmit" } } } },
+        "responses": { "200": { "description": "OK" }, "202": { "$ref": "#/components/responses/ApprovalRequired" } }
       }
     },
     "/api/v1/walletconnect/requests/{id}/reject": {
@@ -2275,6 +2352,203 @@
             }
           } } } }
         }
+      }
+    },
+    "/api/v1/wallet/status": {
+      "get": {
+        "tags": ["Passkeys"],
+        "summary": "Passkey wallet status",
+        "description": "Wallet mode (none / legacy / passkey), address, passkey count, per-chain owner mode, needsPasskeySetup. When needsPasskeySetup is true every signing route answers 409 PASSKEY_SETUP_REQUIRED.",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WalletStatus" } } } } }
+      }
+    },
+    "/api/v1/passkeys/options": {
+      "post": {
+        "tags": ["Passkeys"],
+        "summary": "WebAuthn registration options",
+        "description": "Creation options for navigator.credentials.create (ES256 / alg -7 only, 5-minute single-use challenge). The ceremony runs on the user's device.",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/api/v1/passkeys": {
+      "post": {
+        "tags": ["Passkeys"],
+        "summary": "Register a passkey",
+        "description": "Body `{ attestation: { cred_id_b64, client_data_json_b64, attestation_object_b64 }, label? }`. Returns `active` (new wallet), `migrated`/`migrating` (legacy wallet, same address), `new_wallet` (legacy key unrecoverable) or `pending_signature` with tickets an EXISTING passkey must sign (then `/api/v1/passkeys/confirm`).",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } },
+        "responses": { "200": { "description": "OK" } }
+      },
+      "get": {
+        "tags": ["Passkeys"],
+        "summary": "List passkeys",
+        "description": "`[{ id, credentialId, label, signerAddress, signerKind, createdAt, lastUsedAt, status }]`.",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/api/v1/passkeys/confirm": {
+      "post": {
+        "tags": ["Passkeys"],
+        "summary": "Confirm an added passkey",
+        "description": "Body `{ credentialId, signatures: [{ ticketId, authProof }] }`, one per deployed chain, signed by an existing passkey.",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } },
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/api/v1/passkeys/{id}": {
+      "delete": {
+        "tags": ["Passkeys"],
+        "summary": "Start removing a passkey",
+        "description": "Returns `{ tickets }` to sign with a remaining passkey, then `/confirm-removal`. 409 LAST_PASSKEY for the last one.",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/api/v1/passkeys/{id}/confirm-removal": {
+      "post": {
+        "tags": ["Passkeys"],
+        "summary": "Confirm passkey removal",
+        "description": "Body `{ signatures: [{ ticketId, authProof }] }`.",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PasskeySignatures" } } } },
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/api/v1/approvals": {
+      "get": {
+        "tags": ["Approvals"],
+        "summary": "List approvals",
+        "description": "The user's approval requests, e.g. `?status=pending`.",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "parameters": [{ "name": "status", "in": "query", "required": false, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/api/v1/approvals/{id}": {
+      "get": {
+        "tags": ["Approvals"],
+        "summary": "Get an approval",
+        "description": "Status (pending / approved / rejected / expired / failed) and result `{ transactionHash, userOpHash }`. The creating project's API key alone is enough (Bearer optional).",
+        "security": [{ "ApiKeyAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Approval" } } } } }
+      }
+    },
+    "/api/v1/approvals/{id}/preview": {
+      "post": {
+        "tags": ["Approvals"],
+        "summary": "Preview an approval",
+        "description": "Fresh ticket + hashToSign built from the stored intent.",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TwoPhasePreview" } } } } }
+      }
+    },
+    "/api/v1/approvals/{id}/approve": {
+      "post": {
+        "tags": ["Approvals"],
+        "summary": "Approve with a passkey",
+        "description": "Body `{ ticketId, authProof }`. Single attempt, never retried: tickets are single use. 400 INVALID_PASSKEY_SIGNATURE if the proof does not match hashToSign.",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TwoPhaseSubmit" } } } },
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Approval" } } } } }
+      }
+    },
+    "/api/v1/approvals/{id}/reject": {
+      "post": {
+        "tags": ["Approvals"],
+        "summary": "Reject an approval",
+        "description": "Rejects a pending approval request.",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/api/v1/transaction/preview": {
+      "post": {
+        "tags": ["Transactions"],
+        "summary": "Preview a transfer (two-phase)",
+        "description": "Body `{ token, chain, recipient, amount }` → `{ ticketId, hashToSign, ... }`. Submit via `/api/v1/signer/submit-prepared`.",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } },
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TwoPhasePreview" } } } } }
+      }
+    },
+    "/api/v1/signer/preview-user-op": {
+      "post": {
+        "tags": ["Signer"],
+        "summary": "Preview a UserOperation (two-phase)",
+        "description": "Body `{ chain, transactionData }` → `{ ticketId, hashToSign, ... }`.",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } },
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TwoPhasePreview" } } } } }
+      }
+    },
+    "/api/v1/signer/submit-prepared": {
+      "post": {
+        "tags": ["Signer"],
+        "summary": "Submit a previewed operation",
+        "description": "Body `{ ticketId, authProof }` for any preview (transfer, user op, bridge, offramp). Single attempt, never retried: tickets are single use. 400 INVALID_PASSKEY_SIGNATURE if the proof does not match hashToSign.",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TwoPhaseSubmit" } } } },
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/api/v1/signer/preview-message": {
+      "post": {
+        "tags": ["Signer"],
+        "summary": "Preview a message signature (two-phase)",
+        "description": "Body `{ chain, message }` or `{ chain, typedData }` → `{ ticketId, hashToSign }` (Safe SafeMessage hash).",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } },
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TwoPhasePreview" } } } } }
+      }
+    },
+    "/api/v1/signer/submit-message": {
+      "post": {
+        "tags": ["Signer"],
+        "summary": "Submit a message signature",
+        "description": "Body `{ ticketId, authProof }` → `{ signature }` (ERC-1271 / ERC-6492). Single attempt, never retried: tickets are single use. 400 INVALID_PASSKEY_SIGNATURE if the proof does not match hashToSign.",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TwoPhaseSubmit" } } } },
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/api/v1/bridge/preview": {
+      "post": {
+        "tags": ["Bridge"],
+        "summary": "Preview a bridge (two-phase)",
+        "description": "Body `{ sourceChain, destChain, token, amount, recipient? }` → ticket + hashToSign + quote. Submit via `/api/v1/signer/submit-prepared`.",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } },
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TwoPhasePreview" } } } } }
+      }
+    },
+    "/api/v1/offramp/preview": {
+      "post": {
+        "tags": ["Offramp"],
+        "summary": "Preview an off-ramp transfer (two-phase)",
+        "description": "Body `{ token, chain, amount, lpAddress }` → ticket + hashToSign. Submit via `/api/v1/signer/submit-prepared`.",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } },
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TwoPhasePreview" } } } } }
+      }
+    },
+    "/api/v1/walletconnect/requests/{id}/preview": {
+      "post": {
+        "tags": ["WalletConnect"],
+        "summary": "Preview a DApp request (two-phase)",
+        "description": "Ticket + hashToSign for the pending request; approve with `{ ticketId, authProof }`.",
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TwoPhasePreview" } } } } }
       }
     }
   }

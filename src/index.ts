@@ -16,6 +16,8 @@ import walletConnectRouter from "./routes/wallet-connect";
 import userManagementRouter from "./routes/user-management";
 import defiRouter from "./routes/defi";
 import v2AuthRouter from "./routes/v2-auth";
+import passkeysRouter from "./routes/passkeys";
+import approvalsRouter from "./routes/approvals";
 import swaggerUi from "swagger-ui-express";
 import * as swaggerDocument from "../docs.json";
 
@@ -65,19 +67,17 @@ app.use("/api/v1/bridge", bridgeRouter);
 app.use("/api/v1/walletconnect", walletConnectRouter);
 app.use("/api/v1/users", userManagementRouter);
 app.use("/api/v1/defi", defiRouter);
+// Passkey-owned wallets: passkey management and approval requests. Plain
+// passthrough to the backend (single attempt, status + body relayed).
+app.use("/api/v1/passkeys", passkeysRouter);
+app.use("/api/v1/approvals", approvalsRouter);
 
 // ─── v2 (non-custodial) namespace ──────────────────────────────────
-// /api/v2/* is additive. v1 endpoints continue to work and ALSO accept
-// the new optional fields (enrolledMethods at signup/login, authProof
-// on transactions) — so existing v1 clients can opt into v3 envelopes
-// without changing their URL. /api/v2/auth/migrate-to-v3 is the only
-// strictly-v2 endpoint (it had no v1 equivalent).
+// /api/v2/auth/migrate-to-v3 was the only v2 endpoint. v3 envelopes were
+// replaced by passkey wallets, so it now answers 410
+// REPLACED_BY_PASSKEY_WALLETS.
 app.use("/api/v2/auth", v2AuthRouter);
 
-// Existing v1 routers are intentionally NOT re-mounted at /api/v2/* to
-// avoid the duplication tax. Clients calling /api/v2/auth/login should
-// continue calling /api/v1/auth/login (the request body shape accepts
-// `enrolledMethods` either way).
 
 // Swagger UI Endpoint
 app.use(

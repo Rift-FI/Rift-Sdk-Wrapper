@@ -25,18 +25,8 @@ export const getRequests = async (req: Request, res: Response) => {
   }
 };
 
-export const approveRequest = async (
-  req: Request<{ id: string }>,
-  res: Response
-) => {
-  try {
-    const response = await req.rift!.walletConnect.approveRequest(req.params.id);
-    res.status(200).json(response);
-  } catch (error: any) {
-    const _s = sanitizeError(error);
-    res.status(_s.status || 400).json({ error: _s.error });
-  }
-};
+// approveRequest is a passthrough in routes/wallet-connect.ts (it carries
+// an optional { ticketId, authProof } body the pinned SDK cannot send).
 
 export const rejectRequest = async (
   req: Request<{ id: string }>,

@@ -1,9 +1,11 @@
 // Upstream statuses that are passed through unchanged instead of being
 // flattened into the controller's default (usually 400), because clients
 // must react to them differently:
+//   409 - e.g. PASSKEY_SETUP_REQUIRED: the user must register a passkey first.
+//   410 - EOA_SIGNING_REMOVED / REPLACED_BY_PASSKEY_WALLETS: endpoint is gone.
 //   429 - rate limit or OTP lockout: wait, don't resend a code immediately.
 //   503 - e.g. {"error":"parent-proxy overloaded"}: back off.
-const PASSTHROUGH_STATUSES = new Set([429, 503]);
+const PASSTHROUGH_STATUSES = new Set([409, 410, 429, 503]);
 
 // Sanitize error messages so HTML/garbage from upstream doesn't leak through
 export function sanitizeError(error: any): { error: string; status?: number } {

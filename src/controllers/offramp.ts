@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { sanitizeError } from "../utils/error";
+import { sendResult } from "../utils/passthrough";
 import {
   PreviewExchangeRateRequest,
   CreateOfframpOrderRequest,
@@ -49,7 +50,7 @@ export const sendPaymentLink = async (
 export const pay = async (req: Request<{}, {}, PayRequest>, res: Response) => {
   try {
     const response = await req.rift!.offramp.pay(req.body);
-    res.status(200).json(response);
+    sendResult(res, response);
   } catch (error: any) {
     { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
@@ -61,7 +62,7 @@ export const createOrder = async (
 ) => {
   try {
     const response = await req.rift!.offramp.createOrder(req.body);
-    res.status(201).json(response);
+    sendResult(res, response, 201);
   } catch (error: any) {
     { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }

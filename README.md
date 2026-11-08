@@ -5,7 +5,7 @@ A RESTful API wrapper for the [Rift Finance SDK](https://riftfi.xyz), providing 
 ## 🚀 What is Rift Finance?
 
 Rift Finance is a comprehensive Web3 infrastructure platform that provides:
-- **Wallet services** - Users can manage private keys on multiple chains
+- **Wallet services** - Passkey-owned Safe smart-account wallets on multiple chains (no server-held keys)
 - **Cross-chain DeFi operations** - Support for multiple blockchains and tokens
 - **Fiat on/off-ramps** - Convert between crypto and fiat currencies
 - **Payment infrastructure** - Accept and send crypto payments easily
@@ -32,6 +32,50 @@ User-specific operations require a bearer token:
 ```bash
 Authorization: Bearer your_user_access_token
 ```
+
+## 🔏 Passkey-owned wallets and approvals
+
+Every Rift wallet is a Safe smart account owned **only by the user's passkeys**. Neither Rift nor this wrapper holds a key that can move user funds, and Google / Apple sign-in is login only.
+
+So a fund-moving call through the wrapper (`/transaction/send`, `/signer/send-transaction`, `/signer/sign-message`, `/bridge/execute`, `/offramp/pay`, `/offramp/`, `/walletconnect/requests/:id/approve`, `/defi/swap`) does not execute right away. The backend answers **HTTP 202** and the wrapper relays the body unchanged:
+
+```json
+{
+  "status": "APPROVAL_REQUIRED",
+  "approvalId": "6f1c...",
+  "approvalUrl": "https://app.riftfi.com/approve/6f1c...",
+  "expiresAt": "2026-11-08T12:30:00.000Z",
+  "summary": { "opType": "transfer", "token": "USDC", "amount": "10", "chain": "BASE" }
+}
+```
+
+Give `approvalUrl` to the user. They open it, check the summary and approve with their passkey. Track the outcome:
+
+```bash
+curl "https://api.riftfi.xyz/api/v1/approvals/6f1c..." -H "X-API-Key: your_api_key"
+# → { "status": "pending" | "approved" | "rejected" | "expired" | "failed", "result": { "transactionHash", "userOpHash" } }
+```
+
+Approvals expire after 30 minutes and are single use. Do not resend the original call to "retry" an approval: poll it.
+
+Routes:
+
+| Route | Purpose |
+| --- | --- |
+| `GET /api/v1/wallet/status` | `{ mode, walletAddress, passkeyCount, chains, needsPasskeySetup }` |
+| `POST /api/v1/passkeys/options` · `POST /api/v1/passkeys` · `POST /api/v1/passkeys/confirm` | Register a passkey (WebAuthn ceremony runs on the user's device; ES256 only). First passkey creates the wallet or migrates a legacy wallet (same address). Extra passkeys (recovery devices) return tickets an existing passkey signs, then `confirm`. |
+| `GET /api/v1/passkeys` · `DELETE /api/v1/passkeys/:id` · `POST /api/v1/passkeys/:id/confirm-removal` | List / remove passkeys (never the last one: `409 LAST_PASSKEY`). |
+| `GET /api/v1/approvals?status=pending` · `GET /api/v1/approvals/:id` | List / get approvals. `GET /:id` works with the API key alone. |
+| `POST /api/v1/approvals/:id/preview` · `/approve` · `/reject` | Approve in your own UI: preview → passkey-sign `hashToSign` → approve `{ ticketId, authProof }`. |
+| `POST /api/v1/transaction/preview` · `/api/v1/bridge/preview` · `/api/v1/offramp/preview` · `/api/v1/signer/preview-user-op` · `/api/v1/walletconnect/requests/:id/preview` | Two-phase preview → `{ ticketId, hashToSign, allowCredentials, expiresAt }`. |
+| `POST /api/v1/signer/submit-prepared` | Submit any previewed operation with `{ ticketId, authProof }`. |
+| `POST /api/v1/signer/preview-message` · `/api/v1/signer/submit-message` | Two-phase ERC-1271 message signature. |
+
+Removed: `POST /api/v1/signer/sign-transaction` (raw EOA signing) answers `410 EOA_SIGNING_REMOVED`; `POST /api/v2/auth/migrate-to-v3` answers `410 REPLACED_BY_PASSKEY_WALLETS` (register a passkey instead). `/api/v1/defi/swap` is deprecated upstream.
+
+`authProof` is a passkey WebAuthn assertion over the 32 raw bytes of `hashToSign`: `{ "kind": "passkey", "cred_id_b64", "client_data_json_b64", "authenticator_data_b64", "signature_b64" }`. In a browser, `createPasskeyAuthProof()` from `@rift-finance/wallet` v4 builds it.
+
+`RIFT_BACKEND_URL` (optional env) points the wrapper at another backend (sandbox, local stack); default is the SDK's production URL.
 
 ## 📚 API Documentation
 
@@ -84,11 +128,11 @@ https://api.riftfi.xyz/api-docs
 - Manage user subscriptions
 - Broadcast messages to all subscribers
 
-### ✍️ Signing & Proxy Wallet
+### ✍️ Signing (passkey-owned Safe)
 - Get wallet instances for different chains
-- Sign transactions and messages
-- Send signed transactions to blockchain networks
-- Blockchain interaction without exposing private keys
+- UserOperations and ERC-1271 message signatures through the user's Safe
+- Two-phase preview / submit, or an approval request when no passkey proof is sent
+- Raw EOA transaction signing was removed (`410 EOA_SIGNING_REMOVED`)
 
 ### 🪙 Asset Information
 - Get supported blockchain networks
@@ -128,7 +172,7 @@ https://api.riftfi.xyz/api-docs
 ### 🔗 Wallet Connect
 - Pair new WalletConnect sessions via URI
 - List active sessions and disconnect by topic
-- Approve or reject pending signing requests
+- Approve (passkey proof or approval request) or reject pending signing requests
 
 ### 🏊 Weekly Pool
 - Retrieve the current active weekly reward pool
@@ -184,10 +228,10 @@ curl -X POST "https://api.riftfi.xyz/api/v1/transaction/send" \
     "to": "0x742d35Cc6634C0532925a3b8D91a4d27c71e",
     "value": "1000000", 
     "token": "USDC",
-    "chain": "POLYGON",
-    "externalId": "user123",
-    "password": "user_password"
+    "chain": "POLYGON"
   }'
+# → 202 { "status": "APPROVAL_REQUIRED", "approvalUrl": "https://app.riftfi.com/approve/...", ... }
+#   Send the user to approvalUrl, then poll GET /api/v1/approvals/:approvalId.
 ```
 
 ### Create an Invoice
@@ -261,16 +305,19 @@ All endpoints return consistent error responses:
 
 ### Common HTTP Status Codes:
 - `200` - Success
-- `201` - Created successfully 
+- `201` - Created successfully
+- `202` - Approval required: `{ status: "APPROVAL_REQUIRED", approvalId, approvalUrl, expiresAt, summary }`. Nothing was executed yet; the user approves at `approvalUrl`
 - `400` - Bad request (invalid parameters)
 - `401` - Unauthorized (missing/invalid auth)
+- `409` - e.g. `PASSKEY_SETUP_REQUIRED` (user must register a passkey first) or `LAST_PASSKEY`
+- `410` - Removed endpoint (`EOA_SIGNING_REMOVED`, `REPLACED_BY_PASSKEY_WALLETS`)
 - `429` - Rate limited, or OTP lockout after too many wrong codes. Wait before sending a new code
 - `500` - Internal server error. Upstream 500s carry no internal detail; a `requestId` is appended to the message when available
 - `503` - Upstream overloaded (e.g. `parent-proxy overloaded`). Back off
 
 Notes:
-- Every signing failure on a v1 (custodial) wallet now reads `invalid credentials`. Don't match on the older, more specific messages.
-- The wrapper never retries internally (non-idempotent calls could be duplicated, then fail with `409`). Decide at the caller whether a retry is safe.
+- `400 PASSKEY_REQUIRED`: a Google / Apple (`kind: "oidc"`) proof was sent for signing; only passkeys can authorise funds. `400 INVALID_PASSKEY_SIGNATURE`: the proof doesn't match the ticket; preview again.
+- The wrapper never retries internally (non-idempotent calls could be duplicated, then fail with `409`; tickets and approvals are single use). Decide at the caller whether a retry is safe.
 
 ## 🏗 Architecture
 

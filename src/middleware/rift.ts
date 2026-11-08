@@ -70,14 +70,19 @@ export const riftSdkMiddleware = (
     //
     // Timeout stays at 120s for ramp tolerance (mobile-money STK push runs
     // 60–90s upstream). Server timeout in index.ts is 130s, 10s buffer.
+    // RIFT_BACKEND_URL (optional) points both SDKs at another backend
+    // (sandbox, a local stack, tests). Default: the SDK's production URL.
+    const baseUrl = process.env.RIFT_BACKEND_URL || undefined;
     req.rift = new RiftV1({
       environment: EnvironmentV1.PRODUCTION,
+      ...(baseUrl ? { baseUrl } : {}),
       apiKey: apiKey,
       timeout: 120_000,
       retries: 0,
     });
     req.riftV3 = new RiftV3({
       environment: EnvironmentV3.PRODUCTION,
+      ...(baseUrl ? { baseUrl } : {}),
       apiKey: apiKey,
       timeout: 120_000,
       retries: 0,

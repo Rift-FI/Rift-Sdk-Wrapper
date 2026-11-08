@@ -270,10 +270,16 @@ export const migrateToV3 = async (
   res: Response
 ) => {
   try {
-    // Uses req.riftV3 (v3 SDK at @rift-finance/wallet@^3.0.0) — the v1
-    // SDK at req.rift doesn't know about migrateToV3.
-    const response = await req.riftV3!.auth.migrateToV3(req.body);
-    res.status(200).json(response);
+    // Removed: v3 enclave envelopes were replaced by passkey-owned wallets.
+    // Answer 410 here instead of calling upstream, so an old backend can't
+    // still run a v3 migration through the wrapper.
+    void req;
+    res.status(410).json({
+      error: "REPLACED_BY_PASSKEY_WALLETS",
+      message:
+        "migrate-to-v3 was removed. Register a passkey instead (POST /api/v1/passkeys/options, then POST /api/v1/passkeys); legacy wallets keep their address.",
+      see: "/api/v1/passkeys",
+    });
   } catch (error: any) {
     { const _s = sanitizeError(error); res.status(_s.status || 400).json({ error: _s.error }); };
   }
